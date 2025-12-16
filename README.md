@@ -11,6 +11,8 @@ Part 1 includes finishing writing your own part to the project but it does not m
 
 Testing suggests that your code works as intended i.e. it is perfect.
 
+Make sure to download the github project to your AFS space so you can use VCS to actually compile everything. Unless you want to move everything back and forth or just download VCS locally.
+
 
 
 # Important Links
