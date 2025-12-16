@@ -1,4 +1,4 @@
-# Build18
+# Build18 BB8
 
 Contains the codebase for a BB-8 like robot. Built in System Verilog to work with the an [ASICS Boolean Board](https://www.realdigital.org/hardware/boolean).
 
@@ -7,13 +7,22 @@ Contains the codebase for a BB-8 like robot. Built in System Verilog to work wit
 | 12/21/25  | Finish part 1  |
 | 1/3/26    | Finish testing |
 
-Part 1 includes finishing writing your own part to the project but it does not mean it needs to work properly
+Part 1 includes finishing writing your own part to the project but it is okay if there are some errors.
 
 Testing suggests that your code works as intended i.e. it is perfect.
 
 Make sure to download the github project to your AFS space so you can use VCS to actually compile everything. Unless you want to move everything back and forth or just download VCS locally.
 
+# Who's doing what?
 
+| Person | Task |
+|--------|------|
+| Nate   | Bluetooth Module |
+| Nate   | Bluetooth Controller |
+| Ananya | Motor driver interaface |
+| Ananya | Constraint file |
+| Ananya | Top module/chip interface |
+| Adam   | Control Loop |
 
 # Important Links
 
