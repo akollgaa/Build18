@@ -16,7 +16,7 @@
 * Start Condition: Pulls SDA low while SCL is high
 * Address byte: Sends the 7bit worker address and a 0 bit for write
 * ACK: The worker pulls the SDA line low
-* Data: The controller ends the address of the register to read from
+* Data: The controller sends the address of the register to read from
 * ACK: The worker pulls the SDA line low
 * Start Condition: Pulls SDA low while SCL is high
 * Address byte: Sends the 7bit worker address and a 1 bit for read
@@ -28,49 +28,358 @@
 * */
 
 
-// TODO: Create a STD/datapath for the I2C interface based on the above transaction
+// TODO: Finish the STD/FSM so that it sends a NACK and STOP signal
 module I2C_interface
-#(parameter WORKER = 8'd0000_0000)
+#(parameter WORKER = 7'b110_1000)
 (
 	input logic clock, reset,
 	input logic [7:0] address,
-	input logic addr_in,
+	input logic addr_in, // Doubles as the 'start' signal; Assumes asserts for 1 cycle
 	inout tri scl, sda,
 	output logic [7:0] data
 );
 
-logic [7:0] addr;
+logic data_sda;
+logic data_bus;
+logic en;
+
+logic [7:0] reg_addr;
+logic data_clk;
+logic workerAddr_start, workerAddr_out, workerAddr_done;
+logic workerAddr_sending;
+
+logic workerData_start, workerData_out, workerData_done;
+logic workerData_sending;
+
+logic recData_start, recData_out, recData_sending;
+logic [7:0] recData;
+logic recData_in;
+
+logic [2:0] start_count;
+logic start_data;
+logic start_sending;
+logic start_wait;
+logic send_start;
+logic start_done;
+
+logic reading;
+
+logic [7:0] timeout_counter;
+logic start_timeout;
+logic timeout;
+
+logic sent_data;
+
+logic got_ack;
 
 tri clk;
 
-Clock_Gen clkGen(.clock, .reset, .clk);
+Clock_Gen clkGen(.clock, .reset, .clk, .data_clk);
+Send_Byte workerAddr(.clock(data_clk), .reset,
+										 .start(workerAddr_start),
+										 .data({WORKER, reading}),
+										 .out_data(workerAddr_out),
+										 .done(workerAddr_done));
+Send_Byte workerData(.clock(data_clk), .reset,
+										 .start(workerData_start),
+										 .data(reg_addr),
+										 .out_data(workerData_out),
+										 .done(workerData_done));
+Receieve_Byte recData(.clock(data_clk), .reset,
+											.start(recData_start),
+											.data_in(recData_in),
+											.data(recData),
+											.data_out(recData_out));
 
+assign sda = (en) ? data_bus : 1'bz;
 assign scl = clk;
+assign data_sda = sda;
 
-always_ff @(posedge clock, posedge reset) begin
-	if(reset) begin
-		addr <= 8'd0;
+assign start_data = start_count < 3'd2;
+assign start_done = start_count == 3'd4;
+assign timeout = timeout_counter >= 8'd8;
+
+enum logic [2:0] {INIT = 3'd0, START = 3'd1, ADDR = 3'd2,
+									ACK = 3'd3, DATA = 3'd4, RECEIVE = 3'd5,
+									NACK = 3'd6, STOP = 3'd7} state, nextstate;
+
+always_comb begin
+	en = 1'd0;
+	if(start_sending) begin
+		data_bus = start_data;
+		en = 1'd1;
 	end
-	else if(addr_in) begin
-		addr <= address;
+	else if(workerAddr_sending | workerAddr_start) begin
+		data_bus = workerAddr_out;
+		en = 1'd1;
+	end
+	else if(workerData_sending | workerData_start) begin
+		data_bus = workerData_out;
+		en = 1'd1;	
+	end
+	else if(recData_sending | recData_start) begin
+		recData_in = data_sda;
 	end
 end
 
+always_comb begin
+	if(~en & clk) begin
+		got_ack = data_sda;
+	end
+	else begin
+		got_ack = 1'd0;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset) begin
+		data <= 8'd0;
+	end
+	else if(recData_out) begin
+		data <= recData;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset) begin
+		send_data <= 1'd0;
+	end
+	else if(workerData_done) begin
+		send_data <= 1'd1;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset) begin
+		reading <= 1'd0;
+	end
+	else if(send_data & send_start) begin
+		reading <= 1'd1;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | ~start_timeout) begin
+		timeout <= 1'd0;
+		timeout_counter <= 1'd0;
+	end
+	else if(start_timeout) begin
+		timeout_counter <= timeout_counter + 8'd1;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset) begin
+		reg_addr <= 8'd0;
+	end
+	else if(addr_in) begin
+		reg_addr <= address;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | start_done) begin
+		start_count <= 3'd0;
+		start_sending <= 1'd0;
+		start_wait <= 1'd0;
+	end
+	else if(send_start) begin
+		start_sending <= 1'd1;
+	end
+	else if(start_sending & ~clk) begin
+		start_wait <= 1'd1;
+	else if(start_sending & start_wait & clk) begin
+		start_count <= start_count + 3'd1;
+	end
+end
+
+// FSM
+always_comb begin
+	case(state)
+		INIT: begin
+			nextState = (addr_in) ? START : INIT;
+		end
+		START: begin
+			nextState = (start_done) ? ADDR : START;
+		end
+		ADDR: begin
+			nextState = (workerAddr_done) ? ACK : ADDR;
+		end
+		ACK: begin
+			if(timeout) begin
+				nextState = INIT;
+			end
+			if(got_ack) begin
+				if(reading) begin
+					nextState = RECEIVE;
+				end
+				else if(send_data) begin
+					nextState = START;
+				end
+				else begin
+					nextState = DATA;
+				end
+			end
+			else begin
+				nextState = ACK;
+			end
+		end
+		DATA: begin
+			nextState = (workerData_done) ? ACK : DATA;
+		end
+		RECEIVE: begin
+			nextState = (recData_out) ? NACK : RECEIVE;
+		end
+		NACK: begin
+		end
+		STOP: begin
+		end
+	endcase
+end	
+
+// OUTPUT logic
+
+always_comb begin
+	send_start = 1'd0;
+	start_timeout = 1'd0;
+	workerAddr_start = 1'd0;
+	workerAddr_sending = 1'd0;
+	workerData_start = 1'd0;
+	workerData_sending = 1'd0;
+	recData_start = 1'd0;
+	recData_sending = 1'd0;
+	case(state)
+		INIT: begin
+			if(addr_in) begin
+				send_start = 1'd1;
+			end
+		end
+		START: begin // Does everything on its own
+			if(start_done) begin
+				workerAddr_start = 1'd1;
+			end
+		end
+		ADDR: begin
+			workerAddr_sending = 1'd1;
+		end
+		ACK: begin
+			start_timeout = 1'd1;
+			if(got_ack) begin
+				if(reading) begin
+					recData_start = 1'd1;
+				end
+				else if(send_data) begin
+					send_start = 1'd1;
+				end
+				else begin
+					workerData_start = 1'd1;
+				end
+			end
+		end
+		DATA: begin
+			workerData_sending = 1'd1;
+		end
+		RECEIVE: begin
+			recData_sending = 1'd1;
+		end
+		NACK: begin
+		end
+		STOP: begin
+		end
+	endcase
+end
 
 module: I2C_interface
 
+
+module Receive_Byte(
+	input  logic 			 clock, reset, start,
+	input  logic 			 data_in,
+	output logic [7:0] data,
+	output logic 			 data_out	
+);
+
+logic counting;
+logic [2:0] count;
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | data_out) begin
+		data <= 8'd0;
+		data_out <= 1'd0;
+		count <= 3'd7;	
+		counting <= 1'd1;
+	end
+	else if(count == 3'd0) begin
+		data[count] <= data_in;
+		data_out <= 1'd1;
+	end
+	else if(counting) begin
+		data[count] <= data_in;
+		count <= count - 3'd1;
+	end
+	else if(start) begin
+		data[count] <= data_in;
+		counting <= 1'd1;
+		count <= count - 3'd1;
+	end
+end
+
+endmodule: Receive_Byte
+
+// Assumes data will always be on the line between the 
+// assertion of start and the assertion of done.
+// Assumes start and done are only asserted once
+// Sends data MSB first
+module Send_Byte(
+	input  logic clock, reset, start
+	input  logic [7:0] data,
+	output logic out_data,
+	output logic done
+);
+
+logic [3:0] count;
+logic counting;
+
+assign out_data = data[count];
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | done) begin
+		counting <= 1'd0;
+		count <= 4'd7;
+		done <= 1'd0;
+	end
+	else if(count <= 4'd0) begin
+		done <= 1'd1;	
+	end
+	else if(counting) begin
+		count <= count - 4'd1;
+	end
+	else if(start) begin
+		counting <= 1'd1;
+		count <= count - 4'd1;
+	end
+end
+
+endmodule: Send_Byte
+
 // Every 4 clock cycles it flips clk. Effectively divides the clock by 4
+// The purpose of data_clk is to create a clock edge that strikes right before
+// clk is asserted. This enables an effective data transfer for I2C data
 module Clock_Gen(
 	input logic clock, reset,
-	inout tri clk
+	inout tri clk,
+	output logic data_clk
 );
 
 logic clock_temp;
 logic [2:0] clock_count;
 
+logic [1:0] data_clk_count;
+
 logic en;
 
 assign clk = (en) ? clock_temp : 1'bz;
+assign data_clk = data_clk_count == 2'd2;
 
 assign en = ~reset;
 
@@ -85,6 +394,15 @@ always_ff @(posedge clock, posedge reset) begin
 	end
 	else begin
 		clock_count <= clock_count + 3'd1;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | clock_temp) begin
+		data_clk_count <= 2'd0;
+	end
+	else if(~clock_temp & ~data_clk) begin
+		data_clk_count <= data_clk_count + 2'd1;
 	end
 end
 
