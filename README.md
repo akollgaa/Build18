@@ -31,3 +31,5 @@ Boolean Board's reference manual: https://www.realdigital.org/doc/02013cd17602c8
 Motor Driver(A4988) datasheet: https://cdn.sparkfun.com/datasheets/Robotics/A4988-Datasheet.pdf
 
 MPU(6050) datasheet: https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf
+
+I2C protocol: https://digilent.com/reference/_media/reference/pmod/digilent-pmod-interface-specification.pdf
