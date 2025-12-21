@@ -26,9 +26,6 @@
 * STOP: Pulls SDA high while SCL is high
 *
 * */
-
-
-// TODO: Finish the STD/FSM so that it sends a NACK and STOP signal
 module I2C_interface
 #(parameter WORKER = 7'b110_1000)
 (
@@ -36,7 +33,8 @@ module I2C_interface
 	input logic [7:0] address,
 	input logic addr_in, // Doubles as the 'start' signal; Assumes asserts for 1 cycle
 	inout tri scl, sda,
-	output logic [7:0] data
+	output logic [7:0] data,
+	output logic done
 );
 
 logic data_sda;
@@ -72,6 +70,17 @@ logic sent_data;
 
 logic got_ack;
 
+logic [3:0] nack_count;
+logic start_nack;
+logic nack_sending;
+logic nack_done;
+
+logic [3:0] stop_count;
+logic stop_sending;
+logic stop_start;
+logic stop_done;
+logic pullStop;
+
 tri clk;
 
 Clock_Gen clkGen(.clock, .reset, .clk, .data_clk);
@@ -98,6 +107,8 @@ assign data_sda = sda;
 assign start_data = start_count < 3'd2;
 assign start_done = start_count == 3'd4;
 assign timeout = timeout_counter >= 8'd8;
+assign nack_done = nack_count > 4'd7;
+assign stop_done = stop_count > 4'd5;
 
 enum logic [2:0] {INIT = 3'd0, START = 3'd1, ADDR = 3'd2,
 									ACK = 3'd3, DATA = 3'd4, RECEIVE = 3'd5,
@@ -119,6 +130,14 @@ always_comb begin
 	end
 	else if(recData_sending | recData_start) begin
 		recData_in = data_sda;
+	end
+	else if(nack_sending | nack_start) begin
+		data_bus = 1'd1;
+		en = 1'd1;
+	end
+	else if(stop_sending | stop_start | stop_done) begin
+		data_bus = ~pullStop;
+		en = 1'd1;
 	end
 end
 
@@ -193,6 +212,29 @@ always_ff @(posedge clock, posedge reset) begin
 	end
 end
 
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | (stop_count > 4'd8)) begin
+		stop_count <= 4'd0;
+		pullStop <= 1'd0;
+	end
+	else if(stop_done) begin
+		pullStop <= 1'd1;
+		stop_count <= stop_count + 4'd1;
+	end
+	else if(stop_start | stop_sending) begin
+		stop_count <= stop_count + 4'd1;
+	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset | nack_done) begin
+		nack_count <= 4'd0;
+	end
+	else if(nack_sending | start_nack) begin
+		nack_count <= nack_count + 4'd1;
+	end
+end
+
 // FSM
 always_comb begin
 	case(state)
@@ -231,8 +273,10 @@ always_comb begin
 			nextState = (recData_out) ? NACK : RECEIVE;
 		end
 		NACK: begin
+			nextState = (nack_done) ? STOP : NACK;
 		end
 		STOP: begin
+			nextState = (stop_done) ? INIT : STOP;
 		end
 	endcase
 end	
@@ -248,6 +292,11 @@ always_comb begin
 	workerData_sending = 1'd0;
 	recData_start = 1'd0;
 	recData_sending = 1'd0;
+	nack_start = 1'd0;
+	nack_sending = 1'd0;
+	stop_start = 1'd0;
+	stop_sending = 1'd0;
+	done = 1'd0;
 	case(state)
 		INIT: begin
 			if(addr_in) begin
@@ -281,12 +330,32 @@ always_comb begin
 		end
 		RECEIVE: begin
 			recData_sending = 1'd1;
+			if(recData_out) begin
+				nack_start = 1'd1;
+			end
 		end
 		NACK: begin
+			nack_sending = 1'd1;
+			if(nack_done) begin
+				stop_start = 1'd1;
+			end
 		end
 		STOP: begin
+			stop_sending = 1'd0;
+			if(stop_done) begin
+				done <= 1'd1;	
+			end
 		end
 	endcase
+end
+
+always_ff @(posedge clock, posedge reset) begin
+	if(reset) begin
+		state = INIT;
+	end
+	else begin
+		state = nextState;
+	end
 end
 
 module: I2C_interface
