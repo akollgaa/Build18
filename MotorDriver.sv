@@ -77,17 +77,17 @@ always_comb begin
         end
         HIGH: begin
             count_en = 1'b1;
-            if (count >= PULSE_WIDTH)  
+            if (count >= (PULSE_WIDTH-1'b1))  
                 nextState = LOW;
             else 
                 nextState = HIGH;
         end
         LOW: begin
-            if (~run_en)begin
+            if (~run_en || speed_period == 32'd0 )begin
                 reset_count = 1'b1;
                 nextState = IDLE;
             end
-            else if (count >= speed_period) begin
+            else if (count >= (speed_period-1'b1)) begin
                 reset_count = 1'b1;
                 nextState = HIGH;
             end
@@ -107,3 +107,45 @@ assign ms2 = 1'b1;
 assign ms3 = 1'b1;
 
 endmodule: MotorDriver
+
+// Testbench for MotorDriver module
+module MotorDriver_test();
+
+logic clock, reset_n, dir_in, run_en;
+logic [9:0] speed;
+logic dir, step, en_n, ms1, ms2, ms3;
+
+MotorDriver dut (.*);
+
+initial begin
+    clock = 0;
+    forever #20 clock = ~clock;
+end
+
+initial begin
+    $monitor ($time, , "reset_n: %b, dir_in: %b, run_en: %b, speed: %d, state: %s, dir_out: %b, step: %b, en_n: %b", 
+             reset_n, dir_in, run_en, speed, dut.state.name, dir, step, en_n);
+    reset_n <= 1'b0; dir_in <= 1'b1; speed <= 10'b0; run_en = 1'b1;
+    @ (posedge clock);
+    reset_n <= 1'b1;
+    @ (posedge clock);
+    run_en <= 1'b1; speed <= 10'd100;
+    // speed_period = 1,562,500 / 100 = waits 15,625 clock cycles x 40 (clock period)
+    #1000000;
+    speed <= 10'd0; 
+    #50000;
+    speed <= 10'd100;
+    #1000000;
+    run_en <= 1'b0;
+    #50000;
+    run_en <= 1'b1;
+    speed <= 10'd500;
+    // speed_period = 1,562,500 / 500 = waits 3125 clock cycles x 2
+    #1000000;
+    speed <= 10'd1000;
+    // speed_period = 1,562,500 / 500 = waits 1563 clock cycles x 2
+    #1000000;
+    $finish;
+end
+
+endmodule: MotorDriver_test
