@@ -3,15 +3,21 @@
 /**
 *
 *	Takes the data from the MPU and translates it into degrees
-* 
+*
 * Created by: Adam Kollgaard
 * Date: 12/21/25
 * */
 
+/**
+  * Initializes the MPU controller based on typical settings
+  * Gathers the accelerometer/gyroscrope values and calculates
+  * the orientation of the MPU in degrees.
+  *
+  * */
 module MPU_Controller(
 	input  logic       clock, reset,
 	inout  tri         scl, sda,
-	output logic [8:0] x, y, z	
+	output logic [8:0] x, y, z
 );
 
 logic [7:0] addr;
@@ -25,21 +31,24 @@ logic data_collected;
 
 logic x_in, y_in, z_in;
 
-I2C_interface i2c(.clock(clock),
+I2C_Interface i2c(.clock(clock),
 									.reset(reset),
+                  .re(),
+                  .we(),
+                  .start(),
 									.address(addr),
-									.addr_in(addr_in),
+									.we_data(),
 									.scl(scl), .sda(sda),
-									.data(data),
+									.we_success(),
 									.done(data_done));
 
-TwoByte_Reg(.data_in(x_in), .in(data), .out(data_x));
-TwoByte_Reg(.data_in(y_in), .in(data), .out(data_y));
-TwoByte_Reg(.data_in(z_in), .in(data), .out(data_z));
+TwoByte_Reg  xReg(.data_in(x_in), .in(data), .out(data_x));
+TwoByte_Reg  yReg(.data_in(y_in), .in(data), .out(data_y));
+TwoByte_Reg  zReg(.data_in(z_in), .in(data), .out(data_z));
 
 enum logic [3:0] {INIT = 4'd0, XONE = 4'd1, XTWO = 4'd2,
 									YONE = 4'd3, YTWO = 4'd4, ZONE = 4'd5,
-									ZTWO = 4'd6} state, nexstate;
+									ZTWO = 4'd6} state, nextState;
 
 always_ff @(posedge clock, posedge reset) begin
 	if(reset | start) begin
@@ -48,7 +57,7 @@ always_ff @(posedge clock, posedge reset) begin
 	else if(data_collected) begin
 		// TODO: After the data is collected from the sensor
 		// here you can calculate the actual angles needed
-		
+
 	end
 	else if(~running) begin
 		start <= 1'd1;
@@ -94,50 +103,48 @@ always_comb begin
 		INIT: begin
 			if(start) begin
 				addr_in = 1'd1;
-				addr = 8'b
 			end
 		end
 		XONE: begin
 			running = 1'd1;
 			if(data_done) begin
 				addr_in = 1'd1;
-				addr = 8'b;
-				x_in = 1'd1;	
+				x_in = 1'd1;
 			end
 		end
 		XTWO: begin
 			running = 1'd1;
 			if(data_done) begin
 				addr_in = 1'd1;
-				x_in = 1'd1;	
+				x_in = 1'd1;
 			end
 		end
 		YONE: begin
 			running = 1'd1;
 			if(data_done) begin
 				addr_in = 1'd1;
-				y_in = 1'd1;	
+				y_in = 1'd1;
 			end
 		end
 		YTWO: begin
 			running = 1'd1;
 			if(data_done) begin
 				addr_in = 1'd1;
-				y_in = 1'd1;	
+				y_in = 1'd1;
 			end
 		end
 		ZONE: begin
 			running = 1'd1;
 			if(data_done) begin
 				addr_in = 1'd1;
-				z_in = 1'd1;	
+				z_in = 1'd1;
 			end
 		end
 		ZTWO: begin
 			running = 1'd1;
 			data_collected = 1'd1;
 			if(data_done) begin
-				z_in = 1'd1;	
+				z_in = 1'd1;
 			end
 		end
 	endcase
