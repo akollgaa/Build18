@@ -48,6 +48,7 @@ always_ff @(posedge clock, posedge reset) begin
 	else if(data_collected) begin
 		// TODO: After the data is collected from the sensor
 		// here you can calculate the actual angles needed
+		
 	end
 	else if(~running) begin
 		start <= 1'd1;
@@ -86,38 +87,49 @@ always_comb begin
 	x_in = 1'd0;
 	y_in = 1'd0;
 	z_in = 1'd0;
+	addr_in = 1'd0;
 	running = 1'd0;
 	data_collected = 1'd0;
 	case(state)
 		INIT: begin
+			if(start) begin
+				addr_in = 1'd1;
+				addr = 8'b
+			end
 		end
 		XONE: begin
 			running = 1'd1;
 			if(data_done) begin
+				addr_in = 1'd1;
+				addr = 8'b;
 				x_in = 1'd1;	
 			end
 		end
 		XTWO: begin
 			running = 1'd1;
 			if(data_done) begin
+				addr_in = 1'd1;
 				x_in = 1'd1;	
 			end
 		end
 		YONE: begin
 			running = 1'd1;
 			if(data_done) begin
+				addr_in = 1'd1;
 				y_in = 1'd1;	
 			end
 		end
 		YTWO: begin
 			running = 1'd1;
 			if(data_done) begin
+				addr_in = 1'd1;
 				y_in = 1'd1;	
 			end
 		end
 		ZONE: begin
 			running = 1'd1;
 			if(data_done) begin
+				addr_in = 1'd1;
 				z_in = 1'd1;	
 			end
 		end

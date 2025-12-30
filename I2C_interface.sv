@@ -25,9 +25,11 @@
 * NACK: The controller pulls the SDA line high
 * STOP: Pulls SDA high while SCL is high
 *
+* The above transaction for a READ operation on the given address
+* for specifically an MPU 6050 board.
 * */
-module I2C_interface
-#(parameter WORKER = 7'b110_1000)
+module I2C_Read
+#(parameter WORKER = 7'b110_1000) // Assumes pin AD0 is low
 (
 	input logic clock, reset,
 	input logic [7:0] address,
@@ -36,6 +38,12 @@ module I2C_interface
 	output logic [7:0] data,
 	output logic done
 );
+
+// These are based on the generated clock
+localparam HALF_CYCLE = 500;
+localparam PART_CYCLE = 750;
+localparam FULL_CYCLE = 1000;
+localparam TWO_CYCLE = 2000;
 
 logic data_sda;
 logic data_bus;
@@ -53,7 +61,7 @@ logic recData_start, recData_out, recData_sending;
 logic [7:0] recData;
 logic recData_in;
 
-logic [2:0] start_count;
+logic [9:0] start_count;
 logic start_data;
 logic start_sending;
 logic start_wait;
@@ -62,7 +70,7 @@ logic start_done;
 
 logic reading;
 
-logic [7:0] timeout_counter;
+logic [10:0] timeout_counter;
 logic start_timeout;
 logic timeout;
 
@@ -104,11 +112,11 @@ assign sda = (en) ? data_bus : 1'bz;
 assign scl = clk;
 assign data_sda = sda;
 
-assign start_data = start_count < 3'd2;
-assign start_done = start_count == 3'd4;
-assign timeout = timeout_counter >= 8'd8;
-assign nack_done = nack_count > 4'd7;
-assign stop_done = stop_count > 4'd5;
+assign start_data = start_count < HALF_CYCLE;
+assign start_done = start_count == FULL_CYCLE;
+assign timeout = timeout_counter >= TWO_CYCLE;
+assign nack_done = nack_count > PART_CYCLE;
+assign stop_done = stop_count > HALF_CYCLE;
 
 enum logic [2:0] {INIT = 3'd0, START = 3'd1, ADDR = 3'd2,
 									ACK = 3'd3, DATA = 3'd4, RECEIVE = 3'd5,
@@ -431,7 +439,7 @@ end
 
 endmodule: Send_Byte
 
-// Every 4 clock cycles it flips clk. Effectively divides the clock by 4
+// Every 1000 clock cycles it flips clk. Effectively divides the clock by 1000
 // The purpose of data_clk is to create a clock edge that strikes right before
 // clk is asserted. This enables an effective data transfer for I2C data
 module Clock_Gen(
@@ -441,7 +449,7 @@ module Clock_Gen(
 );
 
 logic clock_temp;
-logic [2:0] clock_count;
+logic [9:0] clock_count;
 
 logic [1:0] data_clk_count;
 
@@ -455,14 +463,14 @@ assign en = ~reset;
 always_ff @(posedge clock, posedge reset) begin
 	if(reset) begin
 		clock_temp <= 1'd0;
-		clock_count <= 3'd0;
+		clock_count <= 10'd0;
 	end
-	else if(clock_count > 3'd3) begin
+	else if(clock_count > 10'd999) begin
 		clock_temp <= ~clock_temp;
-		clock_count <= 3'd0;
+		clock_count <= 10'd0;
 	end
 	else begin
-		clock_count <= clock_count + 3'd1;
+		clock_count <= clock_count + 10'd1;
 	end
 end
 
