@@ -110,7 +110,7 @@ endmodule: I2C_Interface
 /**
 * The I2C Write transaction is as follows
 *
-* Start Condition: Pulls SDA lwo whiel SCL is high
+* Start Condition: Pulls SDA low while SCL is high
 *	Address byte: Sends the 7bit worker address and a 0 bit for write
 * ACK: The worker pulls the SDA line low
 * Data: The controller sends the address of the register to write to
@@ -866,3 +866,81 @@ always_ff @(posedge clock, posedge reset) begin
 end
 
 endmodule: Clock_Gen
+
+/**
+* Test bench for the I2C interface.
+* Simulates the workings of the actual MPU connected on the BUS.
+* Initially tests a simple read and write transactions as well
+* as some more real world tests.
+*
+* */
+module I2C_TB();
+
+	logic clock, reset;
+	logic re, we, start;
+	logic [7:0] address, we_data, re_data;
+	logic we_success, done;
+	tri scl, sda;
+	logic sda_data, en;
+	logic data_bus;
+
+	I2C_Interface DUT(.*);
+
+	assign sda = (en) ? sda_data : 1'bz;
+	assign scl = 1'bz; // We don't want to manipulate the clock
+	assign data_bus = sda;
+
+	task reset_values();
+		reset <= 1'd1;
+		en <= 1'd0;
+		re <= 1'd0;
+		we <= 1'd0;
+		start <= 1'd0;
+		address <= 8'd0;
+		we_data <= 8'd0;
+		@(posedge clock);
+		reset <= 1'd0;
+		@(posedge clock);
+	endtask
+
+	task wait_ack();
+		for(logic [3:0] i = 4'd0; i < 4'd8; i=i+1) begin
+			@(posedge scl);
+		end
+		@(negedge scl);
+		en <= 1'd1;
+		sda_data <= 1'd0;
+		@(negedge scl);
+		en <= 1'd0;
+	endtask
+
+	task write_transaction(
+		input logic [7:0] addr,
+		input logic [7:0] data);
+		we <= 1'd1;
+		address <= addr;
+		we_data <= data;
+		@(posedge clock);
+		start <= 1'd1;
+		@(posedge clock);
+		start <= 1'd0;
+		@(negedge data_bus); // start condition
+		wait_ack();
+		wait_ack();
+		wait_ack();
+		@(posedge scl);
+		@(negedge scl);
+	endtask
+
+	initial begin
+		clock <= 1'd0;
+		forever #1 clock <= ~clock;
+	end
+
+	initial begin
+		reset_values();
+		write_transaction(.addr(8'h68), .data(8'h12));
+    $finish;
+	end
+
+endmodule: I2C_TB
