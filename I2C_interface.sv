@@ -162,23 +162,26 @@ logic got_ack;
 
 logic [9:0] stop_count;
 logic stop_done, stop_sending, pullStop;
-logic stop_start;
+logic stop_start, stop_low;
 
 
-Send_Byte workerAddr(.clock(data_clk), .reset,
+Send_Byte workerAddr(.clock(clock), .reset,
 										 .start(addr_start),
+                     .clk(data_clk),
 										 .data({WORKER, 1'd0}),
 										 .out_data(addr_out),
 										 .done(addr_done));
 
-Send_Byte workerReg(.clock(data_clk), .reset,
+Send_Byte workerReg(.clock(clock), .reset,
 										 .start(reg_start),
+                     .clk(data_clk),
 										 .data(reg_data),
 										 .out_data(reg_out),
 										 .done(reg_done));
 
-Send_Byte workerData(.clock(data_clk), .reset,
+Send_Byte workerData(.clock(clock), .reset,
 										 .start(payload_start),
+                     .clk(data_clk),
 										 .data(payload),
 										 .out_data(payload_out),
 										 .done(payload_done));
@@ -204,16 +207,16 @@ always_comb begin
 		data_bus = addr_out;
 		en = 1'd1;
 	end
-	else if(reg_sending | reg_start) begin
+	else if(reg_sending) begin
 		data_bus = reg_out;
 		en = 1'd1;
 	end
-	else if(payload_sending | payload_start) begin
+	else if(payload_sending) begin
 		data_bus = payload_out;
 		en = 1'd1;
 	end
-	else if(stop_sending | stop_start | stop_done) begin
-		data_bus = ~pullStop;
+	else if((stop_sending | stop_done) & stop_low) begin
+		data_bus = pullStop;
 		en = 1'd1;
 	end
 end
@@ -221,8 +224,8 @@ end
 // Assumes the ACK signal is high before the clock edge rises
 always_comb begin
 	if(~en & clk) begin
-		got_ack = data_sda;
-	end
+	  got_ack = ~data_sda;
+  end
 	else begin
 		got_ack = 1'd0;
 	end
@@ -265,15 +268,21 @@ end
 
 always_ff @(posedge clock, posedge reset) begin
 	if(reset | (stop_count > FULL_CYCLE)) begin
-		stop_count <= 4'd0;
+		stop_count <= 10'd0;
+    stop_low <= 1'd0;
 		pullStop <= 1'd0;
 	end
 	else if(stop_done) begin
 		pullStop <= 1'd1;
-		stop_count <= stop_count + 4'd1;
+		stop_count <= stop_count + 10'd1;
 	end
 	else if(stop_start | stop_sending) begin
-		stop_count <= stop_count + 4'd1;
+    if(stop_low & clk) begin
+		  stop_count <= stop_count + 10'd1;
+    end
+    else if(~clk) begin
+      stop_low <= 1'd1;
+    end
 	end
 end
 
@@ -335,7 +344,9 @@ always_comb begin
 	reg_sending = 1'd0;
 	payload_sending = 1'd0;
 	stop_sending = 1'd0;
+  stop_start = 1'd0;
 	success = 1'd0;
+  done = 1'd0;
 	case(state)
 		INIT: begin
 			if(start) begin
@@ -382,6 +393,9 @@ always_comb begin
 		end
 		STOP: begin
 			stop_sending = 1'd1;
+      if(stop_done) begin
+        done = 1'd1;
+      end
 		end
 	endcase
 end
@@ -475,18 +489,21 @@ logic stop_start;
 logic stop_done;
 logic pullStop;
 
-Send_Byte workerAddr(.clock(data_clk), .reset,
+Send_Byte workerAddr(.clock(clock), .reset,
 										 .start(workerAddr_start),
+                     .clk(data_clk),
 										 .data({WORKER, reading}),
 										 .out_data(workerAddr_out),
 										 .done(workerAddr_done));
-Send_Byte workerData(.clock(data_clk), .reset,
+Send_Byte workerData(.clock(clock), .reset,
 										 .start(workerData_start),
+                     .clk(data_clk),
 										 .data(reg_addr),
 										 .out_data(workerData_out),
 										 .done(workerData_done));
-Receive_Byte recievedData(.clock(data_clk), .reset,
+Receive_Byte recievedData(.clock(clock), .reset,
 											     .start(recData_start),
+                           .clk(data_clk),
 											     .data_in(recData_in),
 											     .data(recData),
 											     .data_out(recData_out));
@@ -514,11 +531,11 @@ always_comb begin
 		data_bus = workerAddr_out;
 		en = 1'd1;
 	end
-	else if(workerData_sending | workerData_start) begin
+	else if(workerData_sending) begin
 		data_bus = workerData_out;
 		en = 1'd1;
 	end
-	else if(recData_sending | recData_start) begin
+	else if(recData_sending) begin
 		recData_in = data_sda;
 	end
 	else if(nack_sending | start_nack) begin
@@ -533,7 +550,7 @@ end
 
 always_comb begin
 	if(~en & clk) begin
-		got_ack = data_sda;
+		got_ack = ~data_sda;
 	end
 	else begin
 		got_ack = 1'd0;
@@ -753,6 +770,7 @@ endmodule: I2C_Read
 
 module Receive_Byte(
 	input  logic 			 clock, reset, start,
+  input  logic       clk,
 	input  logic 			 data_in,
 	output logic [7:0] data,
 	output logic 			 data_out
@@ -760,8 +778,18 @@ module Receive_Byte(
 
 logic counting;
 logic [2:0] count;
+  logic starting;
 
-always_ff @(posedge clock, posedge reset) begin
+  always_ff @(posedge clock, posedge reset) begin
+    if(reset) begin
+      starting <= 1'd0;
+    end
+    else if(start) begin
+      starting <= 1'd1;
+    end
+  end
+
+always_ff @(posedge clk, posedge reset) begin
 	if(reset | data_out) begin
 		data <= 8'd0;
 		data_out <= 1'd0;
@@ -776,10 +804,9 @@ always_ff @(posedge clock, posedge reset) begin
 		data[count] <= data_in;
 		count <= count - 3'd1;
 	end
-	else if(start) begin
+	else if(starting) begin
 		data[count] <= data_in;
 		counting <= 1'd1;
-		count <= count - 3'd1;
 	end
 end
 
@@ -790,7 +817,8 @@ endmodule: Receive_Byte
 // Assumes start and done are only asserted once
 // Sends data MSB first
 module Send_Byte(
-	input  logic clock, reset, start,
+	input  logic clock, reset,
+  input  logic start, clk,
 	input  logic [7:0] data,
 	output logic out_data,
 	output logic done
@@ -798,10 +826,23 @@ module Send_Byte(
 
 logic [3:0] count;
 logic counting;
+logic starting;
 
 assign out_data = data[count];
 
 always_ff @(posedge clock, posedge reset) begin
+  if(reset) begin
+    starting <= 1'd0;
+  end
+  else if(start) begin
+    starting <= 1'd1;
+  end
+  else if(clk) begin
+    starting <= 1'd0;
+  end
+end
+
+always_ff @(posedge clk, posedge reset) begin
 	if(reset | done) begin
 		counting <= 1'd0;
 		count <= 4'd7;
@@ -813,9 +854,8 @@ always_ff @(posedge clock, posedge reset) begin
 	else if(counting) begin
 		count <= count - 4'd1;
 	end
-	else if(start) begin
+	else if(starting) begin
 		counting <= 1'd1;
-		count <= count - 4'd1;
 	end
 end
 
