@@ -164,6 +164,8 @@ logic [9:0] stop_count;
 logic stop_done, stop_sending, pullStop;
 logic stop_start, stop_low;
 
+logic done_sending, close_bus;
+
 
 Send_Byte workerAddr(.clock(clock), .reset,
 										 .start(addr_start),
@@ -192,6 +194,7 @@ assign data_sda = sda;
 assign start_data = start_count < HALF_CYCLE;
 assign start_done = start_count == FULL_CYCLE;
 assign stop_done = stop_count > HALF_CYCLE;
+assign done_sending = addr_done | reg_done | payload_done;
 
 enum logic [3:0] {INIT = 4'd0, START = 4'd1, ADDR = 4'd2,
 									ACK1 = 4'd3, REG = 4'd4, ACK2 = 4'd5,
@@ -199,7 +202,10 @@ enum logic [3:0] {INIT = 4'd0, START = 4'd1, ADDR = 4'd2,
 
 always_comb begin
 	en = 1'd0;
-	if(start_sending) begin
+  if(close_bus) begin
+    en = 1'd0;
+  end
+	else if(start_sending) begin
 		data_bus = start_data;
 		en = 1'd1;
 	end
@@ -229,6 +235,18 @@ always_comb begin
 	else begin
 		got_ack = 1'd0;
 	end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+  if(reset) begin
+    close_bus <= 1'd0;
+  end
+  else if(done_sending & got_ack) begin
+    close_bus <= 1'd1;
+  end
+  else if(data_clk) begin
+    close_bus <= 1'd0;
+  end
 end
 
 always_ff @(posedge clock, posedge reset) begin
@@ -980,6 +998,7 @@ module I2C_TB();
 	initial begin
 		reset_values();
 		write_transaction(.addr(8'h68), .data(8'h12));
+		write_transaction(.addr(8'h23), .data(8'hA9));
     $finish;
 	end
 
