@@ -475,7 +475,7 @@ logic workerAddr_sending;
 logic workerData_start, workerData_out, workerData_done;
 logic workerData_sending;
 
-logic recData_start, recData_out, recData_sending;
+logic recData_start, recData_out, recData_done, recData_sending;
 logic [7:0] recData;
 logic recData_in;
 
@@ -496,16 +496,18 @@ logic send_data;
 
 logic got_ack;
 
-logic [3:0] nack_count;
+logic [10:0] nack_count;
 logic start_nack;
 logic nack_sending;
 logic nack_done;
 
-logic [3:0] stop_count;
+logic [10:0] stop_count;
 logic stop_sending;
 logic stop_start;
 logic stop_done;
 logic pullStop;
+
+logic close_bus, done_sending;
 
 Send_Byte workerAddr(.clock(clock), .reset,
 										 .start(workerAddr_start),
@@ -521,9 +523,11 @@ Send_Byte workerData(.clock(clock), .reset,
 										 .done(workerData_done));
 Receive_Byte recievedData(.clock(clock), .reset,
 											     .start(recData_start),
-                           .clk(data_clk),
+                           .data_clk(data_clk),
+                           .clk(clk),
 											     .data_in(recData_in),
 											     .data(recData),
+                           .done(recData_done),
 											     .data_out(recData_out));
 
 assign sda = (en) ? data_bus : 1'bz;
@@ -532,8 +536,9 @@ assign data_sda = sda;
 assign start_data = start_count < HALF_CYCLE;
 assign start_done = start_count == FULL_CYCLE;
 assign timeout = timeout_counter >= TWO_CYCLE;
-assign nack_done = nack_count > PART_CYCLE;
-assign stop_done = stop_count > HALF_CYCLE;
+assign nack_done = nack_count > TWO_CYCLE;
+assign stop_done = stop_count > FULL_CYCLE;
+assign done_sending = workerData_done | workerAddr_done;
 
 enum logic [2:0] {INIT = 3'd0, START = 3'd1, ADDR = 3'd2,
 									ACK = 3'd3, DATA = 3'd4, RECEIVE = 3'd5,
@@ -541,7 +546,12 @@ enum logic [2:0] {INIT = 3'd0, START = 3'd1, ADDR = 3'd2,
 
 always_comb begin
 	en = 1'd0;
-	if(start_sending) begin
+  recData_in = 1'd0;
+  data_bus = 1'd0;
+  if(close_bus) begin
+    en = 1'd0;
+  end
+	else if(start_sending) begin
 		data_bus = start_data;
 		en = 1'd1;
 	end
@@ -561,7 +571,7 @@ always_comb begin
 		en = 1'd1;
 	end
 	else if(stop_sending | stop_start | stop_done) begin
-		data_bus = ~pullStop;
+		data_bus = pullStop;
 		en = 1'd1;
 	end
 end
@@ -576,6 +586,18 @@ always_comb begin
 end
 
 always_ff @(posedge clock, posedge reset) begin
+  if(reset) begin
+    close_bus <= 1'd0;
+  end
+  else if(done_sending & got_ack) begin
+    close_bus <= 1'd1;
+  end
+  else if(data_clk) begin
+    close_bus <= 1'd0;
+  end
+end
+
+always_ff @(posedge clock, posedge reset) begin
 	if(reset) begin
 		data <= 8'd0;
 	end
@@ -585,7 +607,7 @@ always_ff @(posedge clock, posedge reset) begin
 end
 
 always_ff @(posedge clock, posedge reset) begin
-	if(reset) begin
+	if(reset | done) begin
 		send_data <= 1'd0;
 	end
 	else if(workerData_done) begin
@@ -594,7 +616,7 @@ always_ff @(posedge clock, posedge reset) begin
 end
 
 always_ff @(posedge clock, posedge reset) begin
-	if(reset) begin
+	if(reset | done) begin
 		reading <= 1'd0;
 	end
 	else if(send_data & send_start) begin
@@ -638,7 +660,7 @@ always_ff @(posedge clock, posedge reset) begin
 end
 
 always_ff @(posedge clock, posedge reset) begin
-	if(reset | (stop_count > FULL_CYCLE)) begin
+	if(reset | (stop_count > TWO_CYCLE)) begin
 		stop_count <= 4'd0;
 		pullStop <= 1'd0;
 	end
@@ -695,7 +717,7 @@ always_comb begin
 			nextState = (workerData_done) ? ACK : DATA;
 		end
 		RECEIVE: begin
-			nextState = (recData_out) ? NACK : RECEIVE;
+			nextState = (recData_done) ? NACK : RECEIVE;
 		end
 		NACK: begin
 			nextState = (nack_done) ? STOP : NACK;
@@ -755,7 +777,7 @@ always_comb begin
 		end
 		RECEIVE: begin
 			recData_sending = 1'd1;
-			if(recData_out) begin
+			if(recData_done) begin
 				start_nack = 1'd1;
 			end
 		end
@@ -766,7 +788,7 @@ always_comb begin
 			end
 		end
 		STOP: begin
-			stop_sending = 1'd0;
+			stop_sending = 1'd1;
 			if(stop_done) begin
 				done <= 1'd1;
 			end
@@ -788,44 +810,63 @@ endmodule: I2C_Read
 
 module Receive_Byte(
 	input  logic 			 clock, reset, start,
-  input  logic       clk,
+  input  logic       data_clk, clk,
 	input  logic 			 data_in,
 	output logic [7:0] data,
-	output logic 			 data_out
+	output logic 			 done, data_out
 );
 
 logic counting;
 logic [2:0] count;
-  logic starting;
+logic starting;
+logic info;
 
-  always_ff @(posedge clock, posedge reset) begin
-    if(reset) begin
-      starting <= 1'd0;
-    end
-    else if(start) begin
-      starting <= 1'd1;
-    end
+always_ff @(posedge clock, posedge reset) begin
+  if(reset) begin
+    info <= 1'd0;
   end
+  else if(clk) begin
+    info <= data_in;
+  end
+end
+
+always_ff @(posedge clock, posedge reset) begin
+  if(reset | done) begin
+    starting <= 1'd0;
+  end
+  else if(start) begin
+    starting <= 1'd1;
+  end
+end
+
+always_ff @(posedge data_clk, posedge reset) begin
+  if(reset | (~counting)) begin
+    done <= 1'd0;
+  end
+  else if(count == 3'd0) begin
+    done <= 1'd1;
+  end
+end
 
 always_ff @(posedge clk, posedge reset) begin
 	if(reset | data_out) begin
 		data <= 8'd0;
-		data_out <= 1'd0;
+    data_out <= 1'd0;
 		count <= 3'd7;
-		counting <= 1'd1;
+    counting <= 1'd0;
 	end
-	else if(count == 3'd0) begin
-		data[count] <= data_in;
-		data_out <= 1'd1;
-	end
-	else if(counting) begin
-		data[count] <= data_in;
-		count <= count - 3'd1;
-	end
-	else if(starting) begin
-		data[count] <= data_in;
-		counting <= 1'd1;
-	end
+  else if(done) begin
+    data <= {data[6:0], info};
+    data_out <= 1'd1;
+  end
+  else if(counting) begin
+    count <= count - 3'd1;
+    data <= {data[6:0], info};
+  end
+  else if(starting) begin
+    data <= {data[6:0], info};
+    counting <= 1'd1;
+  end
 end
 
 endmodule: Receive_Byte
@@ -950,6 +991,7 @@ module I2C_TB();
 
 	task reset_values();
 		reset <= 1'd1;
+    sda_data <= 1'd0;
 		en <= 1'd0;
 		re <= 1'd0;
 		we <= 1'd0;
@@ -972,6 +1014,17 @@ module I2C_TB();
 		en <= 1'd0;
 	endtask
 
+  task send_info(
+    input logic [7:0] data
+  );
+    en <= 1'd1;
+    for(logic [3:0] i = 4'd0; i < 4'd8; i=i+1) begin
+      sda_data <= data[4'd7 - i];
+      @(negedge scl);
+    end
+    en <= 1'd0;
+  endtask
+
 	task write_transaction(
 		input logic [7:0] addr,
 		input logic [7:0] data);
@@ -990,6 +1043,27 @@ module I2C_TB();
 		@(negedge scl);
 	endtask
 
+  task read_transaction(
+    input  logic [7:0] addr,
+    input  logic [7:0] data_in
+  );
+    re <= 1'd1;
+    address <= addr;
+    @(posedge clock);
+    start <= 1'd1;
+    @(posedge clock);
+    start <= 1'd0;
+    @(negedge data_bus); // Start condition
+    wait_ack();
+    wait_ack();
+    @(negedge data_bus); // Restart condition
+    wait_ack();
+    send_info(data_in);
+    @(posedge scl);
+    @(posedge scl);
+    @(negedge scl);
+  endtask
+
 	initial begin
 		clock <= 1'd0;
 		forever #1 clock <= ~clock;
@@ -999,6 +1073,16 @@ module I2C_TB();
 		reset_values();
 		write_transaction(.addr(8'h68), .data(8'h12));
 		write_transaction(.addr(8'h23), .data(8'hA9));
+		write_transaction(.addr(8'h23), .data(8'h00));
+		write_transaction(.addr(8'h23), .data(8'hFF));
+    reset_values();
+    read_transaction(.addr(8'h76), .data_in(8'h84));
+    read_transaction(.addr(8'h3E), .data_in(8'hF0));
+    read_transaction(.addr(8'h3E), .data_in(8'h00));
+    read_transaction(.addr(8'h3E), .data_in(8'hFF));
+    @(posedge scl);
+    @(posedge scl);
+    @(posedge scl);
     $finish;
 	end
 
