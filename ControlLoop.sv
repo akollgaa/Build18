@@ -30,6 +30,14 @@
 * Creates a PID loop that tries to self balance the robot
 *
 * */
+/**
+  * TODO:
+  * Learn what a PID loop is.
+  * Change the inputs to roll pitch and yaw for setpoint and MPU
+  * Change the desired output to whatever is neccesary; angle/speed
+  *
+  *
+  * */
 module ControlLoop(
     input  logic       clock, reset, start,
     input  logic [8:0] mpu_x, mpu_y, mpu_z, // These are all in degrees
