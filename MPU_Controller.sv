@@ -130,6 +130,7 @@ always_ff @(posedge clock, posedge reset) begin
 	end
 	else if (calc_roll) begin
 		calc_roll <= 1'd0;
+  end
 	else if (calc_pitch) begin
 		calc_pitch <= 1'd0;
 	end
@@ -178,7 +179,7 @@ always_ff @(posedge clock, posedge reset) begin
 end
 
 always_comb begin
-	if(initalize_done) begin
+	if(initialize_done) begin
 		addr = data_addr;
 	end
 	else begin
@@ -370,14 +371,14 @@ always_comb begin
 			end
 			if(data_done) begin
 				begin_trans_setup = 1'd1;
-				setup_addr = 8'h19;	
+				setup_addr = 8'h19;
 				w_data = 8'h07;
 			end
 		end
 		SMPLE: begin
 			if(data_done) begin
 				begin_trans_setup = 1'd1;
-				setup_addr = 8'h1B;	
+				setup_addr = 8'h1B;
 				w_data = 8'h00;
 			end
 		end
@@ -398,7 +399,7 @@ end
 
 always_ff @(posedge clock, posedge reset) begin
 	if(reset) begin
-		s <= WHO;
+		s <= PWR;
 	end
 	else begin
 		s <= ns;
@@ -419,18 +420,21 @@ module complementary_filter
  input  logic update,
  input  logic [6:0] alpha,
  input  logic [15:0] gyro,
- input  logic [15:0] accel,
- output logic [8:0] angle,
+ input  logic [8:0] accel,
+ output logic [8:0] angle
 );
 
 	logic [8:0] prev_angle;
+  logic new_accel;
+
+  assign new_accel = {7'd0, accel};
 
 	always_ff @(posedge clock, posedge reset) begin
 		if(reset) begin
 			prev_angle <= 9'd0;
 		end
 		else if(update) begin
-			angle <= ((alpha * (prev_angle + (gyro * delta_t))) + ((100 - alpha) * accel))/100;
+			angle <= ((alpha * (prev_angle + (gyro * delta_t))) + ((100 - alpha) * new_accel))/100;
 			prev_angle <= angle;
 		end
 	end
@@ -467,9 +471,9 @@ endmodule: calculate_accel_roll
 module calculate_accel_pitch(
 	input  logic clock, reset,
   input  logic start,
-  input  logic [15:0] x, y z,
+  input  logic [15:0] x, y, z,
 	output logic [8:0] pitch,
-  output logic done	
+  output logic done
 );
 
 	logic [15:0] denom;
@@ -479,7 +483,7 @@ module calculate_accel_pitch(
 
 	assign num = {1'd1, x[14:0]}; // Negate
 	assign sqrt_in = (y * y) + (z * z);
-	
+
 	atan2 func1(.clock(clock),
 						  .reset(reset),
 						  .start(tan_start),
@@ -495,8 +499,8 @@ module calculate_accel_pitch(
 
 	always_ff @(posedge clock, posedge reset) begin
 		if(reset | done) begin
-			sqrt_out <= 16'd0;
-			tan_start <= 1'd0;
+      denom <= 16'd0;
+      tan_start <= 1'd0;
 		end
 		else if(sqrt_done) begin
 			denom <= sqrt_out;
@@ -538,7 +542,7 @@ module SquareRoot(
 			// Here we implement the cordic algorithm
 			if(((y + base) * (y + base)) <= x) begin
 				y <= y + base;
-				base <= base >> 1;	
+				base <= base >> 1;
 			end
 			else begin
 				base <= base >> 1;
@@ -563,7 +567,7 @@ module atan2(
   input  logic start,
   input  logic [15:0] x, y,
 	output logic [8:0] angle,
-  output logic done	
+  output logic done
 );
 
 	logic [15:0] x1, y1, x2, y2;
@@ -577,23 +581,23 @@ module atan2(
 			if(x[15] & y[15]) begin
 				additional_angle = 9'b1_1011_0100;
 				x1 = {1'd1, x[14:0]};
-				y1 = {1'd1, y[14:01};
+				y1 = {1'd1, y[14:01]};
 			end
 			else if(x[15] & ~y[15]) begin
 				additional_angle = 9'b0_0101_1010;
 				x1 = y;
-				y1 = {1'd1, x[14:01};
+				y1 = {1'd1, x[14:01]};
 			end
 			else if(~x[15] & y[15]) begin
 				additional_angle = 9'b1_0101_1010;
-				x1 = {1'd1, y[14:01};
+				x1 = {1'd1, y[14:01]};
 				y1 = x;
-			end 
+			end
 			else begin
 				additional_angle = 9'b0_0000_0000;
 				x1 = x;
 				y1 = y;
-			end 
+			end
 	end
 
 	// These values are predefined based on the algorithm
@@ -611,14 +615,15 @@ module atan2(
 		endcase
 	end
 
-	always_ff @(posedge clock, posedge reset) begin 
-		if(reset) begin 
-			a <= 9'd0; 
-			calculating <= 1'd0; 
+	always_ff @(posedge clock, posedge reset) begin
+		if(reset) begin
+			a <= 9'd0;
+			calculating <= 1'd0;
 			iterations <= 1'd0;
-			x2 <= 16'd0; 
+			x2 <= 16'd0;
 			y2 <= 16'd0;
-		end else if(calculating) begin
+		end
+    else if(calculating) begin
 			//Here we actually perform the rotations
 			if (((16'd1 << iterations) * y2) >= x2) begin
 				x2 <= x2 + (y2 >> iterations);
@@ -626,12 +631,11 @@ module atan2(
 				a <= a + cordic_angle;
 			end
 		end
-		else if(start) begin 
+		else if(start) begin
 			calculating <= 1'd1;
 			x2 <= x1;
 			y2 <= y1;
-			end 
-		end 
+		end
 	end
 endmodule: atan2
 
