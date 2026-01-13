@@ -45,8 +45,8 @@ I2C_Write writer(.clock(clock), .reset(reset),
 					       .address(address),
 					       .data(we_payload),
 					       .start(we_start),
-                 .data_clk(data_clk),
-                 .clk(clk),
+                 		   .data_clk(data_clk),
+                 		   .clk(clk),
 					       .sda(sda),
 					       .success(we_success),
 					       .done(we_done));
@@ -54,8 +54,8 @@ I2C_Write writer(.clock(clock), .reset(reset),
 I2C_Read reader(.clock(clock), .reset(reset),
 				        .address(address),
 				        .addr_in(re_start),
-                .data_clk(data_clk),
-                .clk(clk),
+                		.data_clk(data_clk),
+                		.clk(clk),
 				        .sda(sda),
 				        .data(re_payload),
 				        .done(re_done));
@@ -111,7 +111,7 @@ endmodule: I2C_Interface
 * The I2C Write transaction is as follows
 *
 * Start Condition: Pulls SDA low while SCL is high
-*	Address byte: Sends the 7bit worker address and a 0 bit for write
+* Address byte: Sends the 7bit worker address and a 0 bit for write
 * ACK: The worker pulls the SDA line low
 * Data: The controller sends the address of the register to write to
 * ACK: The worker pulls the SDA line low
@@ -131,7 +131,7 @@ module I2C_Write
 	input logic [7:0] address,
 	input logic [7:0] data,
 	input logic start,
-  input logic data_clk, clk,
+  	input logic data_clk, clk,
 	inout tri sda,
 	output logic success,
 	output logic done
@@ -168,25 +168,25 @@ logic done_sending, close_bus;
 
 
 Send_Byte workerAddr(.clock(clock), .reset,
-										 .start(addr_start),
-                     .clk(data_clk),
-										 .data({WORKER, 1'd0}),
-										 .out_data(addr_out),
-										 .done(addr_done));
+					 .start(addr_start),
+					 .clk(data_clk),
+					 .data({WORKER, 1'd0}),
+					 .out_data(addr_out),
+					 .done(addr_done));
 
 Send_Byte workerReg(.clock(clock), .reset,
-										 .start(reg_start),
-                     .clk(data_clk),
-										 .data(reg_data),
-										 .out_data(reg_out),
-										 .done(reg_done));
+					.start(reg_start),
+					.clk(data_clk),
+					.data(reg_data),
+					.out_data(reg_out),
+					.done(reg_done));
 
 Send_Byte workerData(.clock(clock), .reset,
-										 .start(payload_start),
-                     .clk(data_clk),
-										 .data(payload),
-										 .out_data(payload_out),
-										 .done(payload_done));
+					 .start(payload_start),
+					 .clk(data_clk),
+					 .data(payload),
+					 .out_data(payload_out),
+					 .done(payload_done));
 
 assign sda = (en) ? data_bus : 1'bz;
 assign data_sda = sda;
@@ -197,8 +197,8 @@ assign stop_done = stop_count > HALF_CYCLE;
 assign done_sending = addr_done | reg_done | payload_done;
 
 enum logic [3:0] {INIT = 4'd0, START = 4'd1, ADDR = 4'd2,
-									ACK1 = 4'd3, REG = 4'd4, ACK2 = 4'd5,
-									DATA = 4'd6, ACK3 = 4'd7, STOP = 4'd8} state, nextState;
+				  ACK1 = 4'd3, REG = 4'd4, ACK2 = 4'd5,
+				  DATA = 4'd6, ACK3 = 4'd7, STOP = 4'd8} state, nextState;
 
 always_comb begin
 	en = 1'd0;
@@ -362,9 +362,9 @@ always_comb begin
 	reg_sending = 1'd0;
 	payload_sending = 1'd0;
 	stop_sending = 1'd0;
-  stop_start = 1'd0;
+    stop_start = 1'd0;
 	success = 1'd0;
-  done = 1'd0;
+    done = 1'd0;
 	case(state)
 		INIT: begin
 			if(start) begin
@@ -452,7 +452,7 @@ module I2C_Read
 	input logic clock, reset,
 	input logic [7:0] address,
 	input logic addr_in, // Doubles as the 'start' signal; Assumes asserts for 1 cycle
-  input logic data_clk, clk,
+    input logic data_clk, clk,
 	inout tri sda,
 	output logic [7:0] data,
 	output logic done
@@ -510,25 +510,25 @@ logic pullStop;
 logic close_bus, done_sending;
 
 Send_Byte workerAddr(.clock(clock), .reset,
-										 .start(workerAddr_start),
+					 .start(workerAddr_start),
                      .clk(data_clk),
-										 .data({WORKER, reading}),
-										 .out_data(workerAddr_out),
-										 .done(workerAddr_done));
+					 .data({WORKER, reading}),
+					 .out_data(workerAddr_out),
+					 .done(workerAddr_done));
 Send_Byte workerData(.clock(clock), .reset,
-										 .start(workerData_start),
+					 .start(workerData_start),
                      .clk(data_clk),
-										 .data(reg_addr),
-										 .out_data(workerData_out),
-										 .done(workerData_done));
+					 .data(reg_addr),
+					 .out_data(workerData_out),
+					 .done(workerData_done));
 Receive_Byte recievedData(.clock(clock), .reset,
-											     .start(recData_start),
-                           .data_clk(data_clk),
-                           .clk(clk),
-											     .data_in(recData_in),
-											     .data(recData),
-                           .done(recData_done),
-											     .data_out(recData_out));
+						  .start(recData_start),
+                          .data_clk(data_clk),
+                          .clk(clk),
+						  .data_in(recData_in),
+						  .data(recData),
+                          .done(recData_done),
+						  .data_out(recData_out));
 
 assign sda = (en) ? data_bus : 1'bz;
 assign data_sda = sda;
@@ -541,16 +541,16 @@ assign stop_done = stop_count > FULL_CYCLE;
 assign done_sending = workerData_done | workerAddr_done;
 
 enum logic [2:0] {INIT = 3'd0, START = 3'd1, ADDR = 3'd2,
-									ACK = 3'd3, DATA = 3'd4, RECEIVE = 3'd5,
-									NACK = 3'd6, STOP = 3'd7} state, nextState;
+				  ACK = 3'd3, DATA = 3'd4, RECEIVE = 3'd5,
+				  NACK = 3'd6, STOP = 3'd7} state, nextState;
 
 always_comb begin
 	en = 1'd0;
-  recData_in = 1'd0;
-  data_bus = 1'd0;
-  if(close_bus) begin
-    en = 1'd0;
-  end
+	recData_in = 1'd0;
+	data_bus = 1'd0;
+	if(close_bus) begin
+		en = 1'd0;
+	end
 	else if(start_sending) begin
 		data_bus = start_data;
 		en = 1'd1;
@@ -586,15 +586,15 @@ always_comb begin
 end
 
 always_ff @(posedge clock, posedge reset) begin
-  if(reset) begin
-    close_bus <= 1'd0;
-  end
-  else if(done_sending & got_ack) begin
-    close_bus <= 1'd1;
-  end
-  else if(data_clk) begin
-    close_bus <= 1'd0;
-  end
+	if(reset) begin
+		close_bus <= 1'd0;
+	end
+	else if(done_sending & got_ack) begin
+		close_bus <= 1'd1;
+	end
+	else if(data_clk) begin
+		close_bus <= 1'd0;
+	end
 end
 
 always_ff @(posedge clock, posedge reset) begin
@@ -739,7 +739,7 @@ always_comb begin
 	workerData_sending = 1'd0;
 	recData_start = 1'd0;
 	recData_sending = 1'd0;
-  start_nack = 1'd0;
+  	start_nack = 1'd0;
 	nack_sending = 1'd0;
 	stop_start = 1'd0;
 	stop_sending = 1'd0;
@@ -810,7 +810,7 @@ endmodule: I2C_Read
 
 module Receive_Byte(
 	input  logic 			 clock, reset, start,
-  input  logic       data_clk, clk,
+  	input  logic       data_clk, clk,
 	input  logic 			 data_in,
 	output logic [7:0] data,
 	output logic 			 done, data_out
@@ -877,7 +877,7 @@ endmodule: Receive_Byte
 // Sends data MSB first
 module Send_Byte(
 	input  logic clock, reset,
-  input  logic start, clk,
+  	input  logic start, clk,
 	input  logic [7:0] data,
 	output logic out_data,
 	output logic done
@@ -991,7 +991,7 @@ module I2C_TB();
 
 	task reset_values();
 		reset <= 1'd1;
-    sda_data <= 1'd0;
+    	sda_data <= 1'd0;
 		en <= 1'd0;
 		re <= 1'd0;
 		we <= 1'd0;
@@ -1043,26 +1043,25 @@ module I2C_TB();
 		@(negedge scl);
 	endtask
 
-  task read_transaction(
-    input  logic [7:0] addr,
-    input  logic [7:0] data_in
-  );
-    re <= 1'd1;
-    address <= addr;
-    @(posedge clock);
-    start <= 1'd1;
-    @(posedge clock);
-    start <= 1'd0;
-    @(negedge data_bus); // Start condition
-    wait_ack();
-    wait_ack();
-    @(negedge data_bus); // Restart condition
-    wait_ack();
-    send_info(data_in);
-    @(posedge scl);
-    @(posedge scl);
-    @(negedge scl);
-  endtask
+  	task read_transaction(
+		input  logic [7:0] addr,
+		input  logic [7:0] data_in);
+		re <= 1'd1;
+		address <= addr;
+		@(posedge clock);
+		start <= 1'd1;
+		@(posedge clock);
+		start <= 1'd0;
+		@(negedge data_bus); // Start condition
+		wait_ack();
+		wait_ack();
+		@(negedge data_bus); // Restart condition
+		wait_ack();
+		send_info(data_in);
+		@(posedge scl);
+		@(posedge scl);
+		@(negedge scl);
+  	endtask
 
 	initial begin
 		clock <= 1'd0;
@@ -1075,15 +1074,15 @@ module I2C_TB();
 		write_transaction(.addr(8'h23), .data(8'hA9));
 		write_transaction(.addr(8'h23), .data(8'h00));
 		write_transaction(.addr(8'h23), .data(8'hFF));
-    reset_values();
-    read_transaction(.addr(8'h76), .data_in(8'h84));
-    read_transaction(.addr(8'h3E), .data_in(8'hF0));
-    read_transaction(.addr(8'h3E), .data_in(8'h00));
-    read_transaction(.addr(8'h3E), .data_in(8'hFF));
-    @(posedge scl);
-    @(posedge scl);
-    @(posedge scl);
-    $finish;
+		reset_values();
+		read_transaction(.addr(8'h76), .data_in(8'h84));
+		read_transaction(.addr(8'h3E), .data_in(8'hF0));
+		read_transaction(.addr(8'h3E), .data_in(8'h00));
+		read_transaction(.addr(8'h3E), .data_in(8'hFF));
+		@(posedge scl);
+		@(posedge scl);
+		@(posedge scl);
+		$finish;
 	end
 
 endmodule: I2C_TB
