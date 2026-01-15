@@ -17,7 +17,8 @@
 module MPU_Controller(
 	input  logic       clock, reset, initialize,
 	inout  tri         scl, sda,
-	output logic [8:0] roll, pitch, yaw
+  output logic en_sda,
+	output logic [9:0] roll, pitch, yaw
 );
 
 logic [7:0] addr;
@@ -38,7 +39,7 @@ logic collected_gyro;
 logic initialize_done;
 logic finish_setup;
 logic calc_roll, calc_pitch;
-logic [8:0] bad_roll, bad_pitch, roll_out, pitch_out;
+logic [9:0] bad_roll, bad_pitch, roll_out, pitch_out;
 logic roll_done, pitch_done;
 logic update_pitch;
 logic update_roll;
@@ -54,7 +55,7 @@ I2C_Interface i2c(.clock(clock),
 									.start(begin_trans | begin_trans_setup),
 									.address(addr),
 									.we_data(w_data),
-									.scl(scl), .sda(sda),
+									.scl(scl), .sda(sda), .en_sda(en_sda),
 									.re_data(data),
 									.we_success(we_success),
 									.done(data_done));
@@ -99,11 +100,16 @@ enum logic [3:0] {INIT = 4'd0, XONE = 4'd1, XTWO = 4'd2,
 enum logic [2:0] {PWR = 3'd1, SMPLE = 3'd2,
 									GYRO = 3'd3, ACCEL = 3'd4} s, ns;
 
+assign yaw = 10'd0;
+
 always_ff @(posedge clock, posedge reset) begin
-	if(reset | update_roll) begin
-		bad_roll <= 1'd0;
+	if(reset) begin
+		bad_roll <= 10'd0;
 		update_roll <= 1'd0;
 	end
+  else if(update_roll) begin
+    update_roll <= 1'd0;
+  end
 	else if(roll_done) begin
 		bad_roll <= roll_out;
 		update_roll <= 1'd1;
@@ -111,10 +117,13 @@ always_ff @(posedge clock, posedge reset) begin
 end
 
 always_ff @(posedge clock, posedge reset) begin
-	if(reset | update_pitch) begin
-		bad_pitch <= 1'd0;
+	if(reset) begin
+		bad_pitch <= 10'd0;
 		update_pitch <= 1'd0;
 	end
+  else if(update_pitch) begin
+    update_pitch <= 1'd0;
+  end
 	else if(pitch_done) begin
 		bad_pitch <= pitch_out;
 		update_pitch <= 1'd1;
@@ -137,8 +146,8 @@ always_ff @(posedge clock, posedge reset) begin
 	else if(calculate_new_data) begin
 		calc_roll <= 1'd1;
 		calc_pitch <= 1'd1;
-		gyro_x_deg <= gyro_x / 16'd16384;
-		gyro_y_deg <= gyro_y / 16'd16384;
+		gyro_x_deg <= gyro_x;
+		gyro_y_deg <= gyro_y;
 	end
 end
 
@@ -147,6 +156,9 @@ always_ff @(posedge clock, posedge reset) begin
 		start <= 1'd0;
 		collected_gyro <= 1'd0;
 		calculate_new_data <= 1'd0;
+    gyro_x <= 16'd0;
+    gyro_y <= 16'd0;
+    gyro_z <= 16'd0;
 	end
 	else if(start) begin
 		start <= 1'd0;
@@ -212,7 +224,7 @@ always_comb begin
 			nextState = (data_done) ? ZTWO : ZONE;
 		end
 		ZTWO: begin
-			nextState = (data_done) ? ZTWO : INIT;
+			nextState = (data_done) ? INIT : ZTWO;
 		end
 	endcase
 end
@@ -223,7 +235,7 @@ always_comb begin
 	y_in = 1'd0;
 	z_in = 1'd0;
 	re = 1'd0;
-	we = 1'd1;
+	we = 1'd0;
 	data_addr = 1'd0;
 	begin_trans = 1'd0;
 	running = 1'd0;
@@ -330,7 +342,7 @@ end
 
 always_ff @(posedge clock, posedge reset) begin
 	if(reset) begin
-		state = INIT;
+		state = SETUP;
 	end
 	else begin
 		state = nextState;
@@ -413,6 +425,19 @@ endmodule: MPU_Controller
 *	from both the accelerometer and gyroscope to calculate
 *	more accurate roll, pitch, and yaw data.
 * Courtesy of: https://seanboe.com/blog/complementary-filters
+*
+* According to the the simulator it takes 1873862 time units
+* to gather a new gyroscope value. We assume the value stays
+* the same during this time. 1 clock cycle is 2 time units:
+* 1 unit for high and 1 for low. Therefore it takes 936931
+* clock cycles to get a new value. The Boolean Board runs
+* at 100Mhz meaning 936931 / 100Mhz = 9.369ms.
+*
+* According to the specifications our gyroscope has a range
+* from +/- 250 deg/s. This value is initially in a range
+* from +/- 32768. Typically you divide by 131 to get it into
+* the proper range; we can not do that.
+*
 **/
 module complementary_filter
 #(parameter logic delta_t = 1000)
@@ -420,18 +445,19 @@ module complementary_filter
  input  logic update,
  input  logic [6:0] alpha,
  input  logic [15:0] gyro,
- input  logic [8:0] accel,
- output logic [8:0] angle
+ input  logic [9:0] accel,
+ output logic [9:0] angle
 );
 
-	logic [8:0] prev_angle;
-  logic new_accel;
+	logic [9:0] prev_angle;
+  logic [15:0] new_accel;
 
-  assign new_accel = {7'd0, accel};
+  assign new_accel = {6'd0, accel};
 
 	always_ff @(posedge clock, posedge reset) begin
 		if(reset) begin
-			prev_angle <= 9'd0;
+			prev_angle <= 10'd0;
+      angle <= 10'd0;
 		end
 		else if(update) begin
 			angle <= ((alpha * (prev_angle + (gyro * delta_t))) + ((100 - alpha) * new_accel))/100;
@@ -450,7 +476,7 @@ module calculate_accel_roll(
 	input  logic clock, reset,
   input  logic start,
 	input  logic [15:0] y, z,
-	output logic [8:0] roll,
+	output logic [9:0] roll,
 	output logic done
 );
 
@@ -472,7 +498,7 @@ module calculate_accel_pitch(
 	input  logic clock, reset,
   input  logic start,
   input  logic [15:0] x, y, z,
-	output logic [8:0] pitch,
+	output logic [9:0] pitch,
   output logic done
 );
 
@@ -481,7 +507,7 @@ module calculate_accel_pitch(
 	logic sqrt_done, tan_start;
 	logic [15:0] sqrt_in, sqrt_out;
 
-	assign num = {1'd1, x[14:0]}; // Negate
+  assign num = -x; // Negate
 	assign sqrt_in = (y * y) + (z * z);
 
 	atan2 func1(.clock(clock),
@@ -566,35 +592,41 @@ module atan2(
 	input  logic clock, reset,
   input  logic start,
   input  logic [15:0] x, y,
-	output logic [8:0] angle,
+	output logic [9:0] angle,
   output logic done
 );
 
-	logic [15:0] x1, y1, x2, y2;
-	logic [8:0] additional_angle, a, cordic_angle;
+	logic signed [15:0] x1, y1, x2, y2;
+	logic signed [9:0] additional_angle, a, cordic_angle;
 	logic calculating;
-	logic iterations;
+	logic [3:0] iterations;
 
 	assign angle = additional_angle + a;
 
+  assign done = iterations == 4'd7;
+
 	always_comb begin
 			if(x[15] & y[15]) begin
-				additional_angle = 9'b1_1011_0100;
-				x1 = {1'd1, x[14:0]};
-				y1 = {1'd1, y[14:01]};
+				additional_angle = -10'b00_1011_0100;
+				//x1 = {1'd1, x[14:0]};
+				//y1 = {1'd1, y[14:01]};
+        x1 = -x;
+        y1 = -y;
 			end
 			else if(x[15] & ~y[15]) begin
-				additional_angle = 9'b0_0101_1010;
+				additional_angle = 10'b00_0101_1010;
 				x1 = y;
-				y1 = {1'd1, x[14:01]};
+				//y1 = {1'd1, x[14:01]};
+        y1 = -x;
 			end
 			else if(~x[15] & y[15]) begin
-				additional_angle = 9'b1_0101_1010;
-				x1 = {1'd1, y[14:01]};
+				additional_angle = -10'b00_0101_1010;
+				//x1 = {1'd1, y[14:01]};
+        x1 = -y;
 				y1 = x;
 			end
 			else begin
-				additional_angle = 9'b0_0000_0000;
+				additional_angle = 10'b00_0000_0000;
 				x1 = x;
 				y1 = y;
 			end
@@ -603,23 +635,23 @@ module atan2(
 	// These values are predefined based on the algorithm
 	always_comb begin
 		case(iterations)
-			4'd0: cordic_angle = 9'd45;
-			4'd1: cordic_angle = 9'd26;
-			4'd2: cordic_angle = 9'd14;
-			4'd3: cordic_angle = 9'd7;
-			4'd4: cordic_angle = 9'd4;
-			4'd5: cordic_angle = 9'd2;
-			4'd6: cordic_angle = 9'd1;
-			4'd7: cordic_angle = 9'd1;
-			default: cordic_angle = 9'd0;
+			4'd0: cordic_angle = 10'd45;
+			4'd1: cordic_angle = 10'd26;
+			4'd2: cordic_angle = 10'd14;
+			4'd3: cordic_angle = 10'd7;
+			4'd4: cordic_angle = 10'd4;
+			4'd5: cordic_angle = 10'd2;
+			4'd6: cordic_angle = 10'd1;
+			4'd7: cordic_angle = 10'd1;
+			default: cordic_angle = 10'd0;
 		endcase
 	end
 
 	always_ff @(posedge clock, posedge reset) begin
-		if(reset) begin
-			a <= 9'd0;
+		if(reset | done) begin
+			a <= 10'd0;
 			calculating <= 1'd0;
-			iterations <= 1'd0;
+			iterations <= 4'd0;
 			x2 <= 16'd0;
 			y2 <= 16'd0;
 		end
@@ -630,6 +662,7 @@ module atan2(
 				y2 <= y2 - (x2 >> iterations);
 				a <= a + cordic_angle;
 			end
+      iterations <= iterations + 4'd1;
 		end
 		else if(start) begin
 			calculating <= 1'd1;

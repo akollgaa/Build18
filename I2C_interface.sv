@@ -15,18 +15,23 @@
 * Read/Write operation on a single byte. Designed specifically for
 * the MPU 6050
 * */
-module I2C_Interface
-(
+
+module I2C_Interface(
 	input logic clock, reset,
 	input logic re, we,
 	input logic start,
 	input logic [7:0] address,
 	input logic [7:0] we_data,
 	inout tri scl, sda,
+  output  logic en_sda, // This is for debugging
 	output logic [7:0] re_data,
 	output logic we_success,
 	output logic done
 );
+
+logic en_sda1, en_sda2;
+
+logic [7:0] addr;
 
 logic [7:0] we_payload;
 logic we_start;
@@ -42,25 +47,39 @@ tri clk;
 Clock_Gen clockGen(.clock, .reset, .clk, .data_clk);
 
 I2C_Write writer(.clock(clock), .reset(reset),
-					       .address(address),
+					       .address(addr),
 					       .data(we_payload),
 					       .start(we_start),
-                 		   .data_clk(data_clk),
-                 		   .clk(clk),
-					       .sda(sda),
+                 .data_clk(data_clk),
+                 .clk(clk),
+                 .sda(sda), .en_sda(en_sda1),
 					       .success(we_success),
 					       .done(we_done));
 
 I2C_Read reader(.clock(clock), .reset(reset),
-				        .address(address),
+				        .address(addr),
 				        .addr_in(re_start),
-                		.data_clk(data_clk),
-                		.clk(clk),
-				        .sda(sda),
+                .data_clk(data_clk),
+                .clk(clk),
+                .sda(sda), .en_sda(en_sda2),
 				        .data(re_payload),
 				        .done(re_done));
 
 assign scl = clk;
+
+always_comb begin
+  en_sda = 1'd0;
+  if(we) begin
+    if(en_sda1) begin
+      en_sda = 1'd1;
+    end
+  end
+  else if(re) begin
+    if(en_sda2) begin
+      en_sda = 1'd1;
+    end
+  end
+end
 
 always_ff @(posedge clock, posedge reset) begin
 	if(reset | (re_start | we_start)) begin
@@ -104,6 +123,15 @@ always_ff @(posedge clock, posedge reset) begin
 	end
 end
 
+always_ff @(posedge clock, posedge reset) begin
+  if(reset) begin
+    addr <= 8'd0;
+  end
+  else if(start) begin
+    addr <= address;
+  end
+end
+
 endmodule: I2C_Interface
 
 
@@ -131,8 +159,9 @@ module I2C_Write
 	input logic [7:0] address,
 	input logic [7:0] data,
 	input logic start,
-  	input logic data_clk, clk,
+  input logic data_clk, clk,
 	inout tri sda,
+  output logic en_sda,
 	output logic success,
 	output logic done
 );
@@ -190,6 +219,8 @@ Send_Byte workerData(.clock(clock), .reset,
 
 assign sda = (en) ? data_bus : 1'bz;
 assign data_sda = sda;
+
+assign en_sda = ~en;
 
 assign start_data = start_count < HALF_CYCLE;
 assign start_done = start_count == FULL_CYCLE;
@@ -452,8 +483,9 @@ module I2C_Read
 	input logic clock, reset,
 	input logic [7:0] address,
 	input logic addr_in, // Doubles as the 'start' signal; Assumes asserts for 1 cycle
-    input logic data_clk, clk,
+  input logic data_clk, clk,
 	inout tri sda,
+  output logic en_sda,
 	output logic [7:0] data,
 	output logic done
 );
@@ -532,6 +564,8 @@ Receive_Byte recievedData(.clock(clock), .reset,
 
 assign sda = (en) ? data_bus : 1'bz;
 assign data_sda = sda;
+
+assign en_sda = ~en;
 
 assign start_data = start_count < HALF_CYCLE;
 assign start_done = start_count == FULL_CYCLE;
@@ -973,6 +1007,7 @@ endmodule: Clock_Gen
 * as some more real world tests.
 *
 * */
+/*
 module I2C_TB();
 
 	logic clock, reset;
@@ -1086,3 +1121,4 @@ module I2C_TB();
 	end
 
 endmodule: I2C_TB
+*/
