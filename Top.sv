@@ -16,40 +16,58 @@ module Top
 
 logic clock;
 logic reset_n; //Given from bluetooth module?
+assign reset_n = ~BTN[0]; //just for now since no bluetooth module
+
 logic run_en; //Given from bluetooth module?
+assign run_en = 1'b1; //just for now since no bluetooth module
 
-logic [8:0] dir_degrees; //Input from bluetooth 0-360
-logic [9:0] target_speed_x, target_speed_y; //Also from bluetooth/control loop?
+logic signed [8:0] mpu_pitch, mpu_yaw;
+logic signed [8:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD;
+logic signed [8:0] ble_yaw_kP, ble_yaw_kI, ble_yaw_kD;
+logic signed [8:0] ble_set_pitch, ble_set_yaw;
 
-logic [9:0] speed_x, speed_y; 
-logic dir_x, dir_y; 
+logic signed [9:0] target_speed_left, target_speed_right;
+
+logic [9:0] motor_speed_x, motor_speed_y;
+logic motor_dir_x, motor_dir_y;
+logic [8:0] mpu_roll, mpu_pitch, mpu_yaw;
+
+//logic [8:0] dir_degrees; //Input from bluetooth 0-360
+//logic [9:0] target_speed_x, target_speed_y; //Also from bluetooth/control loop?
 
 // Honestly not sure about how motor orientation will work 
 // This is just placeholder logic 
-always_comb begin 
-    dir_x = 1'b1;
-    dir_y = 1'b1;
-    speed_x = target_speed_x;
-    speed_y = target_speed_y;
-    if (dir_degrees >= 90 && dir_degrees < 270) begin
-        dir_x = 1'b0; // Motor X goes backward in this range
+always_comb begin
+        motor_dir_x   = (target_speed_left < 0) ? 1'b0 : 1'b1;
+        motor_speed_x = (target_speed_left < 0) ? -target_speed_left : target_speed_left;
+
+        motor_dir_y   = (target_speed_right < 0) ? 1'b0 : 1'b1;
+        motor_speed_y = (target_speed_right < 0) ? -target_speed_right : target_speed_right;
     end
-    if (dir_degrees >= 180 && dir_degrees < 360) begin
-        dir_y = 1'b0; // Motor Y goes backward in this range
-    end
-    if (dir_degrees == 9'd90) begin
-        speed_y = 10'd0; // Force Motor Y to stop for a fully right pivot?
-    end
-    else if (dir_degrees == 9'd270) begin
-        speed_x = 10'd0; // Force Motor X to stop for a fully left pivot?
-    end
-end
+
+MPU_Controller mpu (.clock(CLOCK_100),
+                    .reset(~reset_n), 
+                    .initialize(), 
+                    .scl(GPIO0[0]), 
+                    .sda(GPIO0[1]),
+                    .roll(mpu_roll),
+                    .pitch(mpu_pitch), 
+                    .yaw(mpu_yaw));
 
 
-MotorDriver motor_x (.clock(clock),
+ControlLoop controlloop (.clock(CLOCK_100), .reset(~reset_n),
+                         .pitch_kP(ble_pitch_kP), .pitch_kI(ble_pitch_kI), .pitch_kD(ble_pitch_kD),
+                         .yaw_kP(ble_yaw_kP), .yaw_kI(ble_yaw_kI), .yaw_kD(ble_yaw_kD),
+                         .mpu_pitch(mpu_pitch), .mpu_yaw(mpu_yaw),
+                         .set_pitch(ble_set_pitch), .set_yaw(ble_set_yaw),
+                         .target_speed_left(target_speed_left),
+                         .target_speed_right(target_speed_right));
+                        
+
+MotorDriver motor_x (.clock(CLOCK_100),
                      .reset_n(reset_n),
-                     .dir_in(dir_x),
-                     .speed(speed_x),
+                     .dir_in(motor_dir_x),
+                     .speed(motor_speed_x),
                      .run_en(run_en),
                      .step(GPIO1[0]), 
                      .dir(GPIO1[1]), 
@@ -58,10 +76,10 @@ MotorDriver motor_x (.clock(clock),
                      .ms2(), 
                      .ms3());
 
-MotorDriver motor_y (.clock(clock),
+MotorDriver motor_y (.clock(CLOCK_100),
                      .reset_n(reset_n),
-                     .dir_in(dir_y),
-                     .speed(speed_y),
+                     .dir_in(motor_dir_y),
+                     .speed(motor_speed_y ),
                      .run_en(run_en),
                      .step(GPIO1[2]), 
                      .dir(GPIO1[3]), 
