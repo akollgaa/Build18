@@ -43,8 +43,9 @@ logic [9:0] bad_roll, bad_pitch, roll_out, pitch_out;
 logic roll_done, pitch_done;
 logic update_pitch;
 logic update_roll;
+logic update_yaw;
 logic calculate_new_data;
-logic [15:0] gyro_x_deg, gyro_y_deg;
+logic [1:0][15:0] gyro_x_deg, gyro_y_deg, gyro_z_deg;
 
 logic x_in, y_in, z_in;
 
@@ -60,20 +61,20 @@ I2C_Interface i2c(.clock(clock),
 									.we_success(we_success),
 									.done(data_done));
 
-calculate_accel_roll accel_roll(.clock(clock),
+Calculate_Accel_Roll accel_roll(.clock(clock),
 															 .reset(reset),
 															 .start(calc_roll),
 															 .y(data_y), .z(data_z),
 															 .roll(roll_out),
 															 .done(roll_done));
 
-calculate_accel_pitch accel_pitch(.clock(clock),
+Calculate_Accel_Pitch accel_pitch(.clock(clock),
 																 .reset(reset),
 																 .start(calc_pitch),
 																 .x(data_x), .y(data_y), .z(data_z),
 																 .pitch(pitch_out), .done(pitch_done));
 
-complementary_filter #(.delta_t(1000)) fil_pitch(.clock(clock),
+Complementary_Filter fil_pitch(.clock(clock),
 																								 .reset(reset),
 																								 .update(update_pitch),
 																								 .alpha(7'd60),
@@ -81,7 +82,7 @@ complementary_filter #(.delta_t(1000)) fil_pitch(.clock(clock),
 																								 .accel(bad_pitch),
 																								 .angle(pitch));
 
-complementary_filter #(.delta_t(1000)) fil_roll(.clock(clock),
+Complementary_Filter fil_roll(.clock(clock),
 																							 .reset(reset),
 																							 .update(update_roll),
 																							 .alpha(7'd60),
@@ -93,14 +94,15 @@ TwoByte_Reg  xReg(.data_in(x_in), .in(data), .out(data_x), .*);
 TwoByte_Reg  yReg(.data_in(y_in), .in(data), .out(data_y), .*);
 TwoByte_Reg  zReg(.data_in(z_in), .in(data), .out(data_z), .*);
 
+Calculate_Yaw calc_yaw(.start(update_yaw), .yaw_in(yaw),
+                       .gyro(gyro_z_deg), .yaw_out(yaw), .*);
+
 enum logic [3:0] {INIT = 4'd0, XONE = 4'd1, XTWO = 4'd2,
 									YONE = 4'd3, YTWO = 4'd4, ZONE = 4'd5,
 									ZTWO = 4'd6, SETUP=4'd7} state, nextState;
 
 enum logic [2:0] {PWR = 3'd1, SMPLE = 3'd2,
 									GYRO = 3'd3, ACCEL = 3'd4} s, ns;
-
-assign yaw = 10'd0;
 
 always_ff @(posedge clock, posedge reset) begin
 	if(reset) begin
@@ -134,9 +136,17 @@ always_ff @(posedge clock, posedge reset) begin
 	if(reset) begin
 		calc_roll <= 1'd0;
 		calc_pitch <= 1'd0;
-		gyro_x_deg <= 16'd0;
-		gyro_y_deg <= 16'd0;
+    update_yaw <= 1'd0;
+		gyro_x_deg[0] <= 16'd0;
+		gyro_y_deg[0] <= 16'd0;
+		gyro_z_deg[0] <= 16'd0;
+    gyro_x_deg[1] <= 16'd0;
+    gyro_y_deg[1] <= 16'd0;
+		gyro_z_deg[1] <= 16'd0;
 	end
+  else if(update_yaw) begin
+    update_yaw <= 1'd0;
+  end
 	else if (calc_roll) begin
 		calc_roll <= 1'd0;
   end
@@ -146,8 +156,13 @@ always_ff @(posedge clock, posedge reset) begin
 	else if(calculate_new_data) begin
 		calc_roll <= 1'd1;
 		calc_pitch <= 1'd1;
-		gyro_x_deg <= gyro_x;
-		gyro_y_deg <= gyro_y;
+    update_yaw <= 1'd1;
+		gyro_x_deg[0] <= gyro_x;
+		gyro_y_deg[0] <= gyro_y;
+    gyro_z_deg[0] <= gyro_z;
+    gyro_x_deg[1] <= 16'd131;
+    gyro_y_deg[1] <= 16'd131;
+    gyro_z_deg[1] <= 16'd131;
 	end
 end
 
@@ -421,6 +436,37 @@ end
 endmodule: MPU_Controller
 
 /**
+* Implements a simple way to calculate the yaw
+* based on the gyroscope. Since there is no magnometer
+* there will be inherent drift in the yaw calculation.
+* I have no way to counteract this so we deal with it.
+*
+* By integrating the gyroscope value you can extract a
+* delta_angle that can be added to the yaw value
+*
+* The delta_t value is derived the same way as described
+* from the complementary filter
+*
+* */
+module Calculate_Yaw
+#(parameter logic delta_t = 107)
+(
+  input  logic clock, reset,
+  input  logic start,
+  input  logic signed [9:0] yaw_in,
+  input  logic [1:0][15:0] gyro,
+  output logic signed [9:0] yaw_out
+);
+
+  always_ff @(posedge clock, posedge reset) begin
+    if(start) begin
+      yaw_out <= yaw_in + (gyro[0] / (gyro[1] * delta_t));
+    end
+  end
+
+endmodule: Calculate_Yaw
+
+/**
 *	Implements a complementary filter to combine information
 *	from both the accelerometer and gyroscope to calculate
 *	more accurate roll, pitch, and yaw data.
@@ -431,48 +477,78 @@ endmodule: MPU_Controller
 * the same during this time. 1 clock cycle is 2 time units:
 * 1 unit for high and 1 for low. Therefore it takes 936931
 * clock cycles to get a new value. The Boolean Board runs
-* at 100Mhz meaning 936931 / 100Mhz = 9.369ms.
+* at 100Mhz meaning 936931 / 100Mhz = 9.369ms or 1/107 as a fraction
+* The delta_t value is therefore the denominator value: 107
 *
 * According to the specifications our gyroscope has a range
 * from +/- 250 deg/s. This value is initially in a range
 * from +/- 32768. Typically you divide by 131 to get it into
 * the proper range; we can not do that.
 *
+* The gyro data is stored as a fraction in to keep the percision
+* of the number. All values that are multiplied with it do so
+* in their proper fraction manner. The first index is the numerator
+* and the second index is the denominator. This is also done for the
+* alpha term as well but since it is out of a 100 the denominator is
+* implied.
+*
 **/
-module complementary_filter
-#(parameter logic delta_t = 1000)
+module Complementary_Filter
+#(parameter logic delta_t = 107)
 (input  logic clock, reset,
  input  logic update,
  input  logic [6:0] alpha,
- input  logic [15:0] gyro,
+ input  logic [1:0][15:0] gyro,
  input  logic [9:0] accel,
  output logic [9:0] angle
 );
 
-	logic [9:0] prev_angle;
-  logic [15:0] new_accel;
+	logic [1:0][9:0] prev_angle; // Fractional pre_angle
+  logic [1:0][9:0] frac_angle; // Fractional angle
+  logic [15:0] new_accel; // Extended version of accel
+  logic update_prev;
 
   assign new_accel = {6'd0, accel};
 
+  always_comb begin
+    if(frac_angle[1] == 10'd0) begin
+      angle = frac_angle[0];
+    end
+    else begin
+      angle = frac_angle[0] / frac_angle[1];
+    end
+  end
+
 	always_ff @(posedge clock, posedge reset) begin
 		if(reset) begin
-			prev_angle <= 10'd0;
-      angle <= 10'd0;
+      frac_angle[0] <= 10'd0;
+      frac_angle[1] <= 10'd0;
+			prev_angle[0] <= 10'd0;
+			prev_angle[1] <= 10'd0;
+      update_prev <= 1'd0;
 		end
+    else if(update_prev) begin
+      prev_angle[0] <= frac_angle[0];
+      prev_angle[1] <= frac_angle[1];
+      update_prev <= 1'd0;
+    end
 		else if(update) begin
-			angle <= ((alpha * (prev_angle + (gyro * delta_t))) + ((100 - alpha) * new_accel))/100;
-			prev_angle <= angle;
+      frac_angle[0] <= (alpha * ((prev_angle[0] * gyro[1] * delta_t) + (gyro[0] *
+                        prev_angle[1]))) + ((7'd100 - alpha) * (new_accel * prev_angle[1] *
+                        gyro[1] * delta_t));
+      frac_angle[1] <= 100 * prev_angle[1] * gyro[1] * delta_t;
+      update_prev <= 1'd1;
 		end
 	end
 
-endmodule: complementary_filter
+endmodule: Complementary_Filter
 /**
 * Wrapper function
 *	Calculates the Euler's roll angle based on the y and z
 *	values from the accelerometer. Takes about 8 cycles to complete
 *
 * */
-module calculate_accel_roll(
+module Calculate_Accel_Roll(
 	input  logic clock, reset,
   input  logic start,
 	input  logic [15:0] y, z,
@@ -487,14 +563,14 @@ module calculate_accel_roll(
 						 .angle(roll),
 						 .done(done));
 
-endmodule: calculate_accel_roll
+endmodule: Calculate_Accel_Roll
 
 /**
 *	Calculates the Euler's pitch angle based on the
 *	x, y and z values from the accelerometer.
 * Takes about 16 cycles to complete
 * */
-module calculate_accel_pitch(
+module Calculate_Accel_Pitch(
 	input  logic clock, reset,
   input  logic start,
   input  logic [15:0] x, y, z,
@@ -534,7 +610,7 @@ module calculate_accel_pitch(
 		end
 	end
 
-endmodule: calculate_accel_pitch
+endmodule: Calculate_Accel_Pitch
 
 /**
 * Implementation of a CORDIC algorithm for square roots.
