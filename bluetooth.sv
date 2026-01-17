@@ -62,8 +62,10 @@ module bluetooth_wrapper (
     input logic reset,
     input logic BLE_UART_TX,
     output logic BLE_UART_RX,
-    output logic [7:0] speed,
-    output logic [7:0] direction,
+    output logic [7:0] initialize_mpu_motor, initialize_mpu,
+    output logic [7:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD,
+    output logic [7:0] ble_yaw_kP, ble_yaw_kI, ble_yaw_kD,
+    output logic [7:0] ble_set_pitch, ble_set_yaw,
     output logic vector_valid
 );
     logic [7:0] rx_byte;
@@ -72,7 +74,6 @@ module bluetooth_wrapper (
     logic [255:0][7:0] packet; //packed array that holds each 8 bit portion of a packet
     logic [7:0] packet_len;
     logic packet_ready;
-    logic vector_valid;
 
     //reads bluetooth message off UART
     uart_rx uart_rx (
@@ -96,14 +97,22 @@ module bluetooth_wrapper (
 
     //identifies direction and magnitude values
     ble_vector_parser parser (
-    .clk          (clk),
-    .rst          (rst),
-    .packet       (packet),
-    .packet_len   (packet_len),
-    .packet_ready (packet_ready),
-    .direction    (direction),
-    .magnitude    (magnitude),
-    .vector_valid (vector_valid)
+        .clk                (clk),
+        .rst                (rst),
+        .packet             (packet),
+        .packet_len         (packet_len),
+        .packet_ready       (packet_ready),
+        .initialize_mpu_motor (initialize_mpu_motor),
+        .initialize_mpu       (initialize_mpu),
+        .ble_pitch_kP         (ble_pitch_kP),
+        .ble_pitch_kI         (ble_pitch_kI),
+        .ble_pitch_kD         (ble_pitch_kD),
+        .ble_yaw_kP           (ble_yaw_kP),
+        .ble_yaw_kI           (ble_yaw_kI),
+        .ble_yaw_kD           (ble_yaw_kD),
+        .ble_set_pitch        (ble_set_pitch),
+        .ble_set_yaw          (ble_set_yaw),
+        .vector_valid       (vector_valid)
     );
 
 endmodule : bluetooth_wrapper
@@ -239,28 +248,45 @@ module ble_vector_parser (
     input  logic        clk,
     input  logic        rst,
 
-    input  logic [7:0]  packet [0:255],
+    input  logic [255:0][7:0]  packet,
     input  logic [7:0]  packet_len,
     input  logic        packet_ready,
 
-    output logic signed [7:0] direction,
-    output logic [7:0]        magnitude,
+    output logic [7:0] initialize_mpu_motor, initialize_mpu,
+    output logic [7:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD,
+    output logic [7:0] ble_yaw_kP, ble_yaw_kI, ble_yaw_kD,
+    output logic [7:0] ble_set_pitch, ble_set_yaw,
     output logic              vector_valid
 );
 
     always_ff @(posedge clk or posedge rst) begin
         if (rst) begin
-            direction    <= 0;
-            magnitude    <= 0;
-            vector_valid <= 0;
+            initialize_mpu_motor <= 0; 
+            initialize_mpu       <= 0;
+            ble_set_pitch        <= 0;
+            ble_set_yaw          <= 0;
+            ble_pitch_kP         <= 0;
+            ble_pitch_kI         <= 0; 
+            ble_pitch_kD         <= 0;
+            ble_yaw_kP           <= 0;
+            ble_yaw_kI           <= 0;
+            ble_yaw_kD           <= 0;
         end else begin
             vector_valid <= 0;
 
             if (packet_ready) begin
                 // Expect exactly 2 data bytes
-                if (packet_len == 2) begin
-                    direction    <= packet[0];  // signed
-                    magnitude    <= packet[1];  // unsigned
+                if (packet_len == 10) begin
+                    initialize_mpu_motor <= packet[0];
+                    initialize_mpu       <= packet[1];  
+                    ble_set_pitch        <= packet[2];
+                    ble_set_yaw          <= packet[3];
+                    ble_pitch_kP         <= packet[4];
+                    ble_pitch_kI         <= packet[5];  
+                    ble_pitch_kD         <= packet[6];
+                    ble_yaw_kP           <= packet[7];
+                    ble_yaw_kI           <= packet[8];
+                    ble_yaw_kD           <= packet[9];
                     vector_valid <= 1'b1;
                 end
             end
