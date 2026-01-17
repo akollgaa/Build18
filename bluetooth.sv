@@ -1,106 +1,106 @@
-module ChipInterface (
-    input  logic CLOCK_100,
+// module ChipInterface (
+//     input  logic CLOCK_100,
 
-    input  logic [3:0]  BTN,
-    input  logic [15:0] SW,
+//     input  logic [3:0]  BTN,
+//     input  logic [15:0] SW,
 
-    output logic [15:0] LD,
+//     output logic [15:0] LD,
 
-    output logic [3:0]  D1_AN,
-    output logic [3:0]  D2_AN,
-    output logic [7:0]  D1_SEG,
-    output logic [7:0]  D2_SEG,
+//     output logic [3:0]  D1_AN,
+//     output logic [3:0]  D2_AN,
+//     output logic [7:0]  D1_SEG,
+//     output logic [7:0]  D2_SEG,
 
-    output logic [5:0]  GPIO0,
-    output logic [5:0]  GPIO1,
+//     output logic [5:0]  GPIO0,
+//     output logic [5:0]  GPIO1,
 
-    // BLE
-    input  logic BLE_UART_TX,
-    output logic BLE_UART_RX,
+//     // BLE
+//     input  logic BLE_UART_TX,
+//     output logic BLE_UART_RX,
 
-    // UART passthrough (unused here)
-    input  logic UART_RXD,
-    output logic UART_TXD
-);
+//     // UART passthrough (unused here)
+//     input  logic UART_RXD,
+//     output logic UART_TXD
+// );
 
-    // --------------------------------------------------
-    // Clock / Reset
-    // --------------------------------------------------
-    logic clk, rst;
+//     // --------------------------------------------------
+//     // Clock / Reset
+//     // --------------------------------------------------
+//     logic clk, rst;
 
-    assign clk = CLOCK_100;
-    assign rst = BTN[0];     // active-high reset
-    assign UART_TXD = 1'b1; // idle
-    // assign BLE_UART_RX = 1'b1; // BLE idle high
+//     assign clk = CLOCK_100;
+//     assign rst = BTN[0];     // active-high reset
+//     assign UART_TXD = 1'b1; // idle
+//     // assign BLE_UART_RX = 1'b1; // BLE idle high
 
-    // --------------------------------------------------
-    // Bluetooth wrapper outputs
-    // --------------------------------------------------
-    logic [7:0] initialize_mpu_motor;
-    logic [7:0] initialize_mpu;
+//     // --------------------------------------------------
+//     // Bluetooth wrapper outputs
+//     // --------------------------------------------------
+//     logic [7:0] initialize_mpu_motor;
+//     logic [7:0] initialize_mpu;
 
-    logic [7:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD;
-    logic [7:0] ble_yaw_kP,   ble_yaw_kI,   ble_yaw_kD;
+//     logic [7:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD;
+//     logic [7:0] ble_yaw_kP,   ble_yaw_kI,   ble_yaw_kD;
 
-    logic [7:0] ble_set_pitch;
-    logic [7:0] ble_set_yaw;
+//     logic [7:0] ble_set_pitch;
+//     logic [7:0] ble_set_yaw;
 
-    logic vector_valid;
+//     logic vector_valid;
 
-    // --------------------------------------------------
-    // Wrapper under test
-    // --------------------------------------------------
-    bluetooth_wrapper dut (
-        .clock                (clk),
-        .reset                (rst),
+//     // --------------------------------------------------
+//     // Wrapper under test
+//     // --------------------------------------------------
+//     bluetooth_wrapper dut (
+//         .clock                (clk),
+//         .reset                (rst),
 
-        .BLE_UART_TX           (BLE_UART_TX),
-        .BLE_UART_RX           (BLE_UART_RX),
+//         .BLE_UART_TX           (BLE_UART_TX),
+//         .BLE_UART_RX           (BLE_UART_RX),
 
-        .initialize_mpu_motor  (initialize_mpu_motor),
-        .initialize_mpu        (initialize_mpu),
+//         .initialize_mpu_motor  (initialize_mpu_motor),
+//         .initialize_mpu        (initialize_mpu),
 
-        .ble_pitch_kP          (ble_pitch_kP),
-        .ble_pitch_kI          (ble_pitch_kI),
-        .ble_pitch_kD          (ble_pitch_kD),
+//         .ble_pitch_kP          (ble_pitch_kP),
+//         .ble_pitch_kI          (ble_pitch_kI),
+//         .ble_pitch_kD          (ble_pitch_kD),
 
-        .ble_yaw_kP            (ble_yaw_kP),
-        .ble_yaw_kI            (ble_yaw_kI),
-        .ble_yaw_kD            (ble_yaw_kD),
+//         .ble_yaw_kP            (ble_yaw_kP),
+//         .ble_yaw_kI            (ble_yaw_kI),
+//         .ble_yaw_kD            (ble_yaw_kD),
 
-        .ble_set_pitch         (ble_set_pitch),
-        .ble_set_yaw           (ble_set_yaw),
+//         .ble_set_pitch         (ble_set_pitch),
+//         .ble_set_yaw           (ble_set_yaw),
 
-        .vector_valid          (vector_valid)
-    );
+//         .vector_valid          (vector_valid)
+//     );
 
-    // --------------------------------------------------
-    // Debug visualization
-    // --------------------------------------------------
-    always_ff @(posedge clk or posedge rst) begin
-        if (rst) begin
-            LD <= 16'h0000;
-        end else begin
-            // Lower byte: pitch / yaw commands
-            LD[7:0]  <= ble_set_pitch;
+//     // --------------------------------------------------
+//     // Debug visualization
+//     // --------------------------------------------------
+//     always_ff @(posedge clk or posedge rst) begin
+//         if (rst) begin
+//             LD <= 16'h0000;
+//         end else begin
+//             // Lower byte: pitch / yaw commands
+//             LD[7:0]  <= ble_set_pitch;
 
-            // Upper byte: flags & activity
-            LD[15]   <= vector_valid;
-            LD[14]   <= initialize_mpu_motor[0];
-            LD[13]   <= initialize_mpu[0];
-            LD[12:8] <= ble_pitch_kP[4:0];
-        end
-    end
+//             // Upper byte: flags & activity
+//             LD[15]   <= vector_valid;
+//             LD[14]   <= initialize_mpu_motor[0];
+//             LD[13]   <= initialize_mpu[0];
+//             LD[12:8] <= ble_pitch_kP[4:0];
+//         end
+//     end
 
-    // Unused outputs tied off
-    assign D1_AN  = 4'hF;
-    assign D2_AN  = 4'hF;
-    assign D1_SEG = 8'hFF;
-    assign D2_SEG = 8'hFF;
-    assign GPIO0  = 6'b0;
-    assign GPIO1  = 6'b0;
+//     // Unused outputs tied off
+//     assign D1_AN  = 4'hF;
+//     assign D2_AN  = 4'hF;
+//     assign D1_SEG = 8'hFF;
+//     assign D2_SEG = 8'hFF;
+//     assign GPIO0  = 6'b0;
+//     assign GPIO1  = 6'b0;
 
-endmodule
+// endmodule
 
 module bluetooth_wrapper (
     input logic clock,
