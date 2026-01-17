@@ -1,4 +1,4 @@
-`default_nettype none
+//`default_nettype none
 
 /**
 *
@@ -459,7 +459,10 @@ module Calculate_Yaw
 );
 
   always_ff @(posedge clock, posedge reset) begin
-    if(start) begin
+    if(reset) begin
+        yaw_out <= 10'd0;
+    end
+    else if(start) begin
       yaw_out <= yaw_in + (gyro[0] / (gyro[1] * delta_t));
     end
   end

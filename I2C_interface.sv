@@ -1,4 +1,4 @@
-`default_nettype none
+//`default_nettype none
 /**
 *
 * Implements a I2C interface to work with the boolean board.

@@ -1,4 +1,4 @@
-`default_nettype none
+//`default_nettype none
 /*
 * The control loop must interface with an MPU and then take that information
 * and decide what to do with it based on what is currently happening with

@@ -1,4 +1,4 @@
-`default_nettype none
+//`default_nettype none
 /**
  * This module implements a motor driver interface for the A4988 Stepper motor driver
  * It uses an fsm to generate step pulses based on a continuous speed input 

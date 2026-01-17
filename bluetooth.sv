@@ -64,8 +64,8 @@ module bluetooth_wrapper (
     output logic BLE_UART_RX,
     output logic [7:0] speed,
     output logic [7:0] direction,
-    output logic vector_valid;
-)
+    output logic vector_valid
+);
     logic [7:0] rx_byte;
     logic       rx_valid;
     logic clk, rst;

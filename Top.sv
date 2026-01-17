@@ -1,4 +1,4 @@
-`default_nettype none
+//`default_nettype none
 
 /**
  * Top Module/Chip Interface for BB8
