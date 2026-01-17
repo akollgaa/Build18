@@ -56,8 +56,8 @@ MPU_Controller mpu (.clock(CLOCK_100),
 
 bluetooth_wrapper ble (.clock(clock),
                        .reset(reset),
-                       .BLE_UART_TX(.BLE_UART_TX),
-                       .BLE_UART_RX(.BLE_UART_RX),
+                       .BLE_UART_TX(BLE_UART_TX),
+                       .BLE_UART_RX(BLE_UART_RX),
                        .initialize_mpu_motor(initialize_mpu_motor),
                        .initialize_mpu(initialize_mpu),
                        .ble_pitch_kP(ble_pitch_kP),
@@ -68,7 +68,7 @@ bluetooth_wrapper ble (.clock(clock),
                        .ble_yaw_kD(ble_yaw_kD),
                        .ble_set_pitch(ble_set_pitch),
                        .ble_set_yaw(ble_set_yaw),
-                       .vector_valid(vector_valid),
+                       .vector_valid(vector_valid)
                        );
 
 
