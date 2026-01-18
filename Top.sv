@@ -24,6 +24,7 @@ module Top
 logic clock;
 logic reset_n; //Given from bluetooth module?
 assign reset_n = ~BTN[0]; //just for now since no bluetooth module
+assign clock = CLOCK_100;
 
 logic run_en; //Given from bluetooth module?
 assign run_en = 1'b1; //just for now since no bluetooth module
