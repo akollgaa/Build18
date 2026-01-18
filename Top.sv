@@ -80,12 +80,12 @@ assign BCD6 = target_speed_left[3:0];
 assign BCD7 = target_speed_left[7:4];
 
 // MPU_Controller mpu (.clock(CLOCK_100),
-//                     .reset(~reset_n), 
-//                     .initialize(initialize_mpu), 
-//                     .scl(GPIO0[0]), 
+//                     .reset(~reset_n),
+//                     .initialize(initialize_mpu),
+//                     .scl(GPIO0[0]),
 //                     .sda(GPIO0[1]),
 //                     .roll(mpu_roll),
-//                     .pitch(mpu_pitch), 
+//                     .pitch(mpu_pitch),
 //                     .yaw(mpu_yaw));
 
 assign initialize_mpu_motor[0] = SW[0];
@@ -181,17 +181,21 @@ end */
 //                          .target_speed_left(target_speed_left),
 //                          .target_speed_right(target_speed_right));
 
-bluetooth_to_motor ble_mtr (.ble_set_pitch(ble_set_pitch)
+bluetooth_to_motor ble_mtr (.ble_set_pitch(ble_set_pitch),
                             .ble_set_yaw(ble_set_yaw),
                             .motor_speed_x(motor_speed_x),
                             .motor_speed_y(motor_speed_y),
                             .motor_dir_x(motor_dir_x),
-                            .motor_dir_y(motor_dir_y));                 
+                            .motor_dir_y(motor_dir_y));
+
+//assign GPIO1[2] = motor_dir_y; //This is what we actually want
+assign GPIO1[2] = SW[1]; // This is for testing
+assign GPIO1[3] = ~SW[1];
 
 MotorDriver motor_x (.clock(CLOCK_100),
                      .reset_n(reset_n),
-                     .dir_in(1'b0),
-                     .speed(10'sd200),
+                     .dir_in(SW[2]), // This should be motor_dir_x
+                     .speed(10'sd100), // This should be motor_speed_x;
                      .run_en(initialize_mpu_motor[0]),
                      .step(GPIO1[0]),
                      .dir(GPIO1[1]),
@@ -199,7 +203,7 @@ MotorDriver motor_x (.clock(CLOCK_100),
                      .ms1(GPIO1[5]),  // Will be shared with all the other ms1,ms2,ms3
                      .ms2(),
                      .ms3());
-
+/*
 MotorDriver motor_y (.clock(CLOCK_100),
                      .reset_n(reset_n),
                      .dir_in(1'b1),
@@ -210,7 +214,7 @@ MotorDriver motor_y (.clock(CLOCK_100),
                      .en_n(),
                      .ms1(),
                      .ms2(),
-                     .ms3());
+                     .ms3()); */
 
 // Here we create a direction controller for motor_y
                      //
@@ -245,5 +249,5 @@ module bluetooth_to_motor
 
     assign motor_speed_x = ble_set_pitch;
     assign motor_speed_y = ble_set_pitch;
-    
+
 endmodule : bluetooth_to_motor
