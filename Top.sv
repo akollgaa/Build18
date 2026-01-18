@@ -16,7 +16,10 @@ module Top
  output logic [7:0]   D1_SEG, D2_SEG,
  output logic [3:0]   D1_AN, D2_AN,
  input  logic         BLE_UART_TX,
- output logic         BLE_UART_RX);
+ output logic         BLE_UART_RX,
+ input  logic UART_RXD,
+ output logic UART_TXD
+);
 
 logic clock;
 logic reset_n; //Given from bluetooth module?
@@ -24,6 +27,7 @@ assign reset_n = ~BTN[0]; //just for now since no bluetooth module
 
 logic run_en; //Given from bluetooth module?
 assign run_en = 1'b1; //just for now since no bluetooth module
+assign UART_TXD = 1'd1;
 
 logic signed [8:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD;
 logic signed [8:0] ble_yaw_kP, ble_yaw_kI, ble_yaw_kD;
@@ -56,6 +60,8 @@ assign GPIO0[0] = scl_l;
 assign GPIO0[1] = sda_l;
 assign blank = 8'd0;
 
+assign LD[15] = vector_valid;
+
 SevenSegmentDisplay dut(.*);
 SSegDisplayDriver ssd(.dpoints(8'd0), .reset(1'd0), .clk(CLOCK_100),
                       .*);
@@ -80,8 +86,8 @@ assign BCD2 = {2'd0, motor_speed[9:8]};
 assign BCD3 = 8'd0;
 assign BCD4 = 8'd0;
 assign BCD5 = 8'd0;
-assign BCD6 = 8'd0;
-assign BCD7 = 8'd0;
+assign BCD6 = ble_set_pitch[3:0];
+assign BCD7 = ble_set_pitch[7:0];
 
 // MPU_Controller mpu (.clock(CLOCK_100),
 //                     .reset(~reset_n),
