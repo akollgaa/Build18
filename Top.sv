@@ -45,14 +45,14 @@ always_comb begin
         motor_speed_y = (target_speed_right < 0) ? -target_speed_right : target_speed_right;
     end
 
-MPU_Controller mpu (.clock(CLOCK_100),
-                    .reset(~reset_n), 
-                    .initialize(initialize_mpu), 
-                    .scl(GPIO0[0]), 
-                    .sda(GPIO0[1]),
-                    .roll(mpu_roll),
-                    .pitch(mpu_pitch), 
-                    .yaw(mpu_yaw));
+// MPU_Controller mpu (.clock(CLOCK_100),
+//                     .reset(~reset_n), 
+//                     .initialize(initialize_mpu), 
+//                     .scl(GPIO0[0]), 
+//                     .sda(GPIO0[1]),
+//                     .roll(mpu_roll),
+//                     .pitch(mpu_pitch), 
+//                     .yaw(mpu_yaw));
 
 bluetooth_wrapper ble (.clock(clock),
                        .reset(reset),
@@ -72,14 +72,20 @@ bluetooth_wrapper ble (.clock(clock),
                        );
 
 
-ControlLoop controlloop (.clock(CLOCK_100), .reset(~reset_n),
-                         .pitch_kP(ble_pitch_kP), .pitch_kI(ble_pitch_kI), .pitch_kD(ble_pitch_kD),
-                         .yaw_kP(ble_yaw_kP), .yaw_kI(ble_yaw_kI), .yaw_kD(ble_yaw_kD),
-                         .mpu_pitch(mpu_pitch), .mpu_yaw(mpu_yaw),
-                         .set_pitch(ble_set_pitch), .set_yaw(ble_set_yaw),
-                         .target_speed_left(target_speed_left),
-                         .target_speed_right(target_speed_right));
-                        
+// ControlLoop controlloop (.clock(CLOCK_100), .reset(~reset_n),
+//                          .pitch_kP(ble_pitch_kP), .pitch_kI(ble_pitch_kI), .pitch_kD(ble_pitch_kD),
+//                          .yaw_kP(ble_yaw_kP), .yaw_kI(ble_yaw_kI), .yaw_kD(ble_yaw_kD),
+//                          .mpu_pitch(mpu_pitch), .mpu_yaw(mpu_yaw),
+//                          .set_pitch(ble_set_pitch), .set_yaw(ble_set_yaw),
+//                          .target_speed_left(target_speed_left),
+//                          .target_speed_right(target_speed_right));
+
+bluetooth_to_motor ble_mtr (.ble_set_pitch(ble_set_pitch)
+                            .ble_set_yaw(ble_set_yaw),
+                            .motor_speed_x(motor_speed_x),
+                            .motor_speed_y(motor_speed_y),
+                            .motor_dir_x(motor_dir_x),
+                            .motor_dir_y(motor_dir_y));                 
 
 MotorDriver motor_x (.clock(CLOCK_100),
                      .reset_n(reset_n),
@@ -107,3 +113,34 @@ MotorDriver motor_y (.clock(CLOCK_100),
 
 
 endmodule: Top
+
+module bluetooth_to_motor
+    (input logic signed ble_set_pitch,
+     input logic signed ble_set_yaw,
+     output logic motor_speed_x, motor_speed_y,
+     output logic motor_dir_x, motor_dir_y
+    );
+
+    always_comb begin
+        if (ble_set_yaw == 0 && ble_set_pitch > 0) begin
+            motor_dir_x = 1;
+            motor_dir_y = 1;
+        end
+        else if (ble_set_yaw == 0 && ble_set_pitch < 0) begin
+            motor_dir_x = -1;
+            motor_dir_y = -1;
+        end
+        else if (ble_set_yaw < 0) begin
+            motor_dir_x = -1;
+            motor_dir_y = 1;
+        end
+        else begin
+            motor_dir_x = 1;
+            motor_dir_y = -1;
+        end
+    end
+
+    assign motor_speed_x = ble_set_pitch;
+    assign motor_speed_y = ble_set_pitch;
+    
+endmodule : bluetooth_to_motor
