@@ -3,8 +3,9 @@ from bleak import BleakClient
 from keyboard import is_pressed, add_hotkey
 
 # ====== FPGA BLE CONFIG ======
-FPGA_ADDRESS = "EF:5A:77:54:D7:CD"
-CHAR_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e"  # Nordic UART RX
+# FPGA_ADDRESS = "EF:5A:77:54:D7:CD"
+FPGA_ADDRESS = "FB:CB:F1:FC:24:45"
+CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # Nordic UART RX
 
 # ====== Control State ======
 pitch = 0
@@ -24,9 +25,15 @@ yaw_kD = 0
 def clamp(val, min_val, max_val):
     return max(min_val, min(max_val, val))
 
-def to_uint8(val):
-    """Convert to unsigned 8-bit (0-255)"""
-    return int(val) & 0xFF
+def to_safe_uint8(val):
+    """
+    Convert to unsigned 8-bit (0-255) and ensure it's not 0x0A (newline).
+    If the value is 0x0A, shift it to 0x0B to avoid packet corruption.
+    """
+    val = int(val) & 0xFF
+    if val == 0x0A:
+        val = 0x0B  # Shift newline values to avoid termination
+    return val
 
 def make_packet():
     """
@@ -45,24 +52,29 @@ def make_packet():
     [8] ble_yaw_kI
     [9] ble_yaw_kD
     [10] newline (0x0A)
+    
+    All values are safe-encoded to avoid 0x0A in data bytes.
     """
     return bytes([
-        to_uint8(initialize_mpu_motor),
-        to_uint8(initialize_mpu),
-        to_uint8(pitch),      # ble_set_pitch
-        to_uint8(yaw),        # ble_set_yaw
-        to_uint8(pitch_kP),
-        to_uint8(pitch_kI),
-        to_uint8(pitch_kD),
-        to_uint8(yaw_kP),
-        to_uint8(yaw_kI),
-        to_uint8(yaw_kD),
+        to_safe_uint8(initialize_mpu_motor),
+        to_safe_uint8(initialize_mpu),
+        to_safe_uint8(pitch + 50),      # ble_set_pitch: -50 to +50 -> 0 to 100
+        to_safe_uint8(yaw + 50),        # ble_set_yaw: -50 to +50 -> 0 to 100
+        to_safe_uint8(pitch_kP),
+        to_safe_uint8(pitch_kI),
+        to_safe_uint8(pitch_kD),
+        to_safe_uint8(yaw_kP),
+        to_safe_uint8(yaw_kI),
+        to_safe_uint8(yaw_kD),
         0x0A  # newline terminator
     ])
 
 # ====== Async BLE Loop ======
 async def ble_loop():
     global pitch, yaw
+    
+    last_pitch = 0
+    last_yaw = 0
 
     while True:
         try:
@@ -85,8 +97,15 @@ async def ble_loop():
                     elif is_pressed("a") or is_pressed("left"):
                         yaw -= 10
 
-                    pitch = clamp(pitch, 0, 255)
-                    yaw = clamp(yaw, 0, 255)
+                    # Clamp to -50 to +50 range
+                    pitch = clamp(pitch, -50, 50)
+                    yaw = clamp(yaw, -50, 50)
+
+                    # --- print updates when pitch/yaw changes ---
+                    if pitch != last_pitch or yaw != last_yaw:
+                        print(f"Pitch: {pitch:+3d} | Yaw: {yaw:+3d}")
+                        last_pitch = pitch
+                        last_yaw = yaw
 
                     # --- send packet ---
                     packet = make_packet()
@@ -129,27 +148,44 @@ def increment(name, delta):
     
     if name == "pitch_kP":
         pitch_kP = clamp(pitch_kP + delta, 0, 255)
+        # Avoid 0x0A
+        if pitch_kP == 10:
+            pitch_kP = 11 if delta > 0 else 9
         print(f"pitch_kP = {pitch_kP}")
     elif name == "pitch_kI":
         pitch_kI = clamp(pitch_kI + delta, 0, 255)
+        if pitch_kI == 10:
+            pitch_kI = 11 if delta > 0 else 9
         print(f"pitch_kI = {pitch_kI}")
     elif name == "pitch_kD":
         pitch_kD = clamp(pitch_kD + delta, 0, 255)
+        if pitch_kD == 10:
+            pitch_kD = 11 if delta > 0 else 9
         print(f"pitch_kD = {pitch_kD}")
     elif name == "yaw_kP":
         yaw_kP = clamp(yaw_kP + delta, 0, 255)
+        if yaw_kP == 10:
+            yaw_kP = 11 if delta > 0 else 9
         print(f"yaw_kP = {yaw_kP}")
     elif name == "yaw_kI":
         yaw_kI = clamp(yaw_kI + delta, 0, 255)
+        if yaw_kI == 10:
+            yaw_kI = 11 if delta > 0 else 9
         print(f"yaw_kI = {yaw_kI}")
     elif name == "yaw_kD":
         yaw_kD = clamp(yaw_kD + delta, 0, 255)
+        if yaw_kD == 10:
+            yaw_kD = 11 if delta > 0 else 9
         print(f"yaw_kD = {yaw_kD}")
     elif name == "initialize_mpu":
         initialize_mpu = clamp(initialize_mpu + delta, 0, 255)
+        if initialize_mpu == 10:
+            initialize_mpu = 11 if delta > 0 else 9
         print(f"initialize_mpu = {initialize_mpu}")
     elif name == "initialize_mpu_motor":
         initialize_mpu_motor = clamp(initialize_mpu_motor + delta, 0, 255)
+        if initialize_mpu_motor == 10:
+            initialize_mpu_motor = 11 if delta > 0 else 9
         print(f"initialize_mpu_motor = {initialize_mpu_motor}")
 
 # ====== Main ======
@@ -160,6 +196,7 @@ if __name__ == "__main__":
     print("  S/↓ : Pitch -10")
     print("  D/→ : Yaw +10")
     print("  A/← : Yaw -10")
+    print("  (Range: -50 to +50)")
     print("\nPID Tuning Hotkeys:")
     print("  1/2: pitch_kP ±1")
     print("  3/4: pitch_kI ±1")
