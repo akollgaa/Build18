@@ -2,16 +2,14 @@
 
 /**
  * Top Module/Chip Interface for BB8
- *
+ * 
  * Still need to add mpu controller, control loop, bluetooth module
- * Also need to verify motor direction logic
+ * Also need to verify motor direction logic 
  */
 
 module Top
-(input  logic         CLOCK_100,
+(input  logic         CLOCK_100, 
  input  logic [3:0]   BTN,
- input  logic [15:0]  SW,
- output logic [15:0]  LD,
  output logic [5:0]   GPIO0, GPIO1,
  output logic [7:0]   D1_SEG, D2_SEG,
  output logic [3:0]   D1_AN, D2_AN,
@@ -30,6 +28,7 @@ logic run_en; //Given from bluetooth module?
 assign run_en = 1'b1; //just for now since no bluetooth module
 assign UART_TXD = 1'd1;
 
+logic signed [8:0] mpu_pitch, mpu_yaw;
 logic signed [8:0] ble_pitch_kP, ble_pitch_kI, ble_pitch_kD;
 logic signed [8:0] ble_yaw_kP, ble_yaw_kI, ble_yaw_kD;
 logic signed [8:0] ble_set_pitch, ble_set_yaw;
@@ -66,6 +65,7 @@ assign LD[15] = vector_valid;
 SevenSegmentDisplay dut(.*);
 SSegDisplayDriver ssd(.dpoints(8'd0), .reset(1'd0), .clk(CLOCK_100),
                       .*);
+logic [8:0] mpu_roll, mpu_pitch, mpu_yaw;
 
 //logic [8:0] dir_degrees; //Input from bluetooth 0-360
 //logic [9:0] target_speed_x, target_speed_y; //Also from bluetooth/control loop?
@@ -91,12 +91,12 @@ assign BCD6 = ble_set_pitch[3:0];
 assign BCD7 = ble_set_pitch[7:0];
 
 // MPU_Controller mpu (.clock(CLOCK_100),
-//                     .reset(~reset_n),
-//                     .initialize(initialize_mpu),
-//                     .scl(GPIO0[0]),
+//                     .reset(~reset_n), 
+//                     .initialize(initialize_mpu), 
+//                     .scl(GPIO0[0]), 
 //                     .sda(GPIO0[1]),
 //                     .roll(mpu_roll),
-//                     .pitch(mpu_pitch),
+//                     .pitch(mpu_pitch), 
 //                     .yaw(mpu_yaw));
 
 
@@ -156,7 +156,7 @@ MPU_Controller mpu (.clock(CLOCK_100),
                     .yaw(mpu_yaw)); */
 
 bluetooth_wrapper ble (.clock(clock),
-                       .reset(~reset_n),
+                       .reset(reset),
                        .BLE_UART_TX(BLE_UART_TX),
                        .BLE_UART_RX(BLE_UART_RX),
                        .initialize_mpu_motor(initialize_motor),
@@ -189,7 +189,7 @@ end */
 //                          .target_speed_left(target_speed_left),
 //                          .target_speed_right(target_speed_right));
 
-bluetooth_to_motor ble_mtr (.ble_set_pitch(ble_set_pitch),
+bluetooth_to_motor ble_mtr (.ble_set_pitch(ble_set_pitch)
                             .ble_set_yaw(ble_set_yaw),
                             .motor_speed_x(motor_speed_x),
                             .motor_speed_y(motor_speed_y),
@@ -223,23 +223,21 @@ MotorDriver motor_x (.clock(CLOCK_100),
                      .dir(GPIO1[1]),
                      .en_n(GPIO1[4]), // Will be shared with the other motor en
                      .ms1(GPIO1[5]),  // Will be shared with all the other ms1,ms2,ms3
-                     .ms2(),
+                     .ms2(), 
                      .ms3());
-/*
+
 MotorDriver motor_y (.clock(CLOCK_100),
                      .reset_n(reset_n),
-                     .dir_in(1'b1),
-                     .speed(10'sd200),
+                     .dir_in(motor_dir_y),
+                     .speed(motor_speed_y ),
                      .run_en(initialize_mpu_motor),
-                     .step(GPIO1[2]),
-                     .dir(GPIO1[3]),
+                     .step(GPIO1[2]), 
+                     .dir(GPIO1[3]), 
                      .en_n(),
                      .ms1(),
-                     .ms2(),
-                     .ms3()); */
+                     .ms2(), 
+                     .ms3());
 
-// Here we create a direction controller for motor_y
-                     //
 
 endmodule: Top
 
@@ -271,5 +269,5 @@ module bluetooth_to_motor
 
     assign motor_speed_x = ble_set_pitch;
     assign motor_speed_y = ble_set_pitch;
-
+    
 endmodule : bluetooth_to_motor
