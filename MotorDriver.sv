@@ -28,7 +28,7 @@ module MotorDriver(
 // Minimum duration for both step high and step low pulses are 1 microsecond
 // Assuming clock is 100 MHz so one clock cycle is 10 ns
 // 1 microsecond/10 ns = 100 cycles --> use 20 cycles so driver definitely sees pulse
-localparam PULSE_WIDTH = 32'd200;
+localparam PULSE_WIDTH = 32'd500;
 
 // speed_period is used to calculate how long we need to be in the pulse low state
 logic [31:0] speed_period;
@@ -38,10 +38,10 @@ always_comb begin
     end
     else begin
         // speed_period = clock / (steps/sec * 16)
-        speed_period = 32'd6250000 / speed ;
+        speed_period = 32'd100000000 / speed ;
 
-        if (speed_period < 32'd400)
-            speed_period = 32'd400; // Minimum total period at 25 MHz
+        if (speed_period < 32'd100000)
+            speed_period = 32'd100000; // Minimum total period at 25 MHz
     end
 end
 
@@ -102,9 +102,9 @@ end
 assign step = (state == HIGH);
 assign dir = dir_in;
 assign en_n = ~run_en;
-assign ms1 = 1'b1;
-assign ms2 = 1'b1;
-assign ms3 = 1'b1;
+assign ms1 = 1'b0;
+assign ms2 = 1'b0;
+assign ms3 = 1'b0;
 
 endmodule: MotorDriver
 

@@ -74,6 +74,9 @@ module bluetooth_wrapper (
     logic [255:0][7:0] packet; //packed array that holds each 8 bit portion of a packet
     logic [7:0] packet_len;
     logic packet_ready;
+    
+    assign clk = clock;
+    assign rst = reset;
 
     //reads bluetooth message off UART
     uart_rx uart_rx (
@@ -271,12 +274,13 @@ module ble_vector_parser (
             ble_yaw_kP           <= 0;
             ble_yaw_kI           <= 0;
             ble_yaw_kD           <= 0;
+            vector_valid         <= 0;
         end else begin
             vector_valid <= 0;
 
             if (packet_ready) begin
                 // Expect exactly 2 data bytes
-                if (packet_len == 10) begin
+                if (packet_len == 11) begin
                     initialize_mpu_motor <= packet[0];
                     initialize_mpu       <= packet[1];  
                     ble_set_pitch        <= packet[2];

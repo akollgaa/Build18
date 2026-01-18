@@ -42,7 +42,7 @@ module ControlLoop(
     input  logic       clock, reset, start, 
 	input  logic signed [8:0] pitch_kP, pitch_kI, pitch_kD, //from bluetooth module for testing 
     input  logic signed [8:0] yaw_kP, yaw_kI, yaw_kD, //from bluetooth module for testing 
-	input  logic signed [8:0] mpu_pitch, mpu_yaw,  //from mpu controller
+	input  logic signed [9:0] mpu_pitch, mpu_yaw,  //from mpu controller
 	input  logic signed [8:0] set_pitch, set_yaw, //from bluetooth
   	output logic signed [9:0] target_speed_left, target_speed_right
 );
