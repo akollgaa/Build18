@@ -34,12 +34,15 @@ logic signed [9:0] target_speed_left, target_speed_right;
 logic [9:0] motor_speed_x, motor_speed_y;
 logic motor_dir_x, motor_dir_y;
 logic signed [9:0] mpu_roll, mpu_pitch, mpu_yaw;
+logic motor_direction;
+logic signed [9:0] motor_speed;
 
 logic [6:0] HEX7, HEX6, HEX5, HEX4, HEX3, HEX2, HEX1, HEX0;
 logic [3:0] BCD7, BCD6, BCD5, BCD4, BCD3, BCD2, BCD1, BCD0;
 logic [7:0] blank;
 
-logic [7:0] initialize_mpu, initialize_mpu_motor;
+logic [7:0] initialize_mpu, initialize_motor;
+logic motor_on;
 
 logic pressed_btn;
 logic btn_was_pressed;
@@ -62,22 +65,23 @@ SSegDisplayDriver ssd(.dpoints(8'd0), .reset(1'd0), .clk(CLOCK_100),
 
 // Honestly not sure about how motor orientation will work
 // This is just placeholder logic
+/*
 always_comb begin
         motor_dir_x   = (target_speed_left < 0) ? 1'b0 : 1'b1;
         motor_speed_x = (target_speed_left < 0) ? -target_speed_left : target_speed_left;
 
         motor_dir_y   = (target_speed_right < 0) ? 1'b0 : 1'b1;
         motor_speed_y = (target_speed_right < 0) ? -target_speed_right : target_speed_right;
-    end
+end */
 
-assign BCD0 = count[3:0];
-assign BCD1 = count[7:4];
-assign BCD2 = {2'd0, mpu_roll[9:8]};
-assign BCD3 = count2[3:0];
-assign BCD4 = count2[7:4];
-assign BCD5 = {2'd0, mpu_pitch[9:8]};
-assign BCD6 = target_speed_left[3:0];
-assign BCD7 = target_speed_left[7:4];
+assign BCD0 = motor_speed[3:0];
+assign BCD1 = motor_speed[7:4];
+assign BCD2 = {2'd0, motor_speed[9:8]};
+assign BCD3 = 8'd0;
+assign BCD4 = 8'd0;
+assign BCD5 = 8'd0;
+assign BCD6 = 8'd0;
+assign BCD7 = 8'd0;
 
 // MPU_Controller mpu (.clock(CLOCK_100),
 //                     .reset(~reset_n),
@@ -87,8 +91,6 @@ assign BCD7 = target_speed_left[7:4];
 //                     .roll(mpu_roll),
 //                     .pitch(mpu_pitch),
 //                     .yaw(mpu_yaw));
-
-assign initialize_mpu_motor[0] = SW[0];
 
 
 
@@ -112,7 +114,7 @@ always_ff @(posedge clock, negedge reset_n) begin
     count2 <= count2 + 8'd1;
   end
 end */
-
+/*
 always_ff @(posedge clock, negedge reset_n) begin
   if(~reset_n) begin
     pressed_btn <= 1'd0;
@@ -133,10 +135,10 @@ always_ff @(posedge clock, negedge reset_n) begin
   else if(initialize_mpu) begin
     initialize_mpu <= 1'd0;
   end
-end
+end */
 
 
-
+/*
 MPU_Controller mpu (.clock(CLOCK_100),
                     .reset(~reset_n),
                     .initialize(initialize_mpu[0]),
@@ -144,13 +146,13 @@ MPU_Controller mpu (.clock(CLOCK_100),
                     .sda(sda),
                     .roll(mpu_roll),
                     .pitch(mpu_pitch),
-                    .yaw(mpu_yaw));
-/*
+                    .yaw(mpu_yaw)); */
+
 bluetooth_wrapper ble (.clock(clock),
                        .reset(~reset_n),
                        .BLE_UART_TX(BLE_UART_TX),
                        .BLE_UART_RX(BLE_UART_RX),
-                       .initialize_mpu_motor(initialize_mpu_motor),
+                       .initialize_mpu_motor(initialize_motor),
                        .initialize_mpu(initialize_mpu),
                        .ble_pitch_kP(ble_pitch_kP),
                        .ble_pitch_kI(ble_pitch_kI),
@@ -161,9 +163,8 @@ bluetooth_wrapper ble (.clock(clock),
                        .ble_set_pitch(ble_set_pitch),
                        .ble_set_yaw(ble_set_yaw),
                        .vector_valid(vector_valid)
-                       ); */
+                       );
 
-assign vector_valid = SW[1];
 /*
 always_ff @(posedge clock) begin
     if (vector_valid) begin
@@ -188,15 +189,29 @@ bluetooth_to_motor ble_mtr (.ble_set_pitch(ble_set_pitch),
                             .motor_dir_x(motor_dir_x),
                             .motor_dir_y(motor_dir_y));
 
-//assign GPIO1[2] = motor_dir_y; //This is what we actually want
-assign GPIO1[2] = SW[1]; // This is for testing
-assign GPIO1[3] = ~SW[1];
+always_comb begin
+  if(SW[1]) begin // This is to turn on debugging mode
+    motor_direction = SW[2];
+    motor_on = SW[0];
+    if(SW[3]) begin
+      motor_speed = 10'sd400;
+    end
+    else begin
+      motor_speed = 10'sd200;
+    end
+  end
+  else begin
+    motor_direction = motor_dir_x;
+    motor_speed = motor_speed_x;
+    motor_on = initialize_motor[0];
+  end
+end
 
 MotorDriver motor_x (.clock(CLOCK_100),
                      .reset_n(reset_n),
-                     .dir_in(SW[2]), // This should be motor_dir_x
-                     .speed(10'sd100), // This should be motor_speed_x;
-                     .run_en(initialize_mpu_motor[0]),
+                     .dir_in(motor_direction), // This should be motor_dir_x
+                     .speed(motor_speed), // This should be motor_speed_x;
+                     .run_en(motor_on),
                      .step(GPIO1[0]),
                      .dir(GPIO1[1]),
                      .en_n(GPIO1[4]), // Will be shared with the other motor en
