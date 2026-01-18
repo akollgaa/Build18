@@ -3,8 +3,8 @@ from bleak import BleakClient
 from keyboard import is_pressed, add_hotkey
 
 # ====== FPGA BLE CONFIG ======
-# FPGA_ADDRESS = "EF:5A:77:54:D7:CD"
-FPGA_ADDRESS = "FB:CB:F1:FC:24:45"
+FPGA_ADDRESS = "EF:5A:77:54:D7:CD"
+# FPGA_ADDRESS = "FB:CB:F1:FC:24:45"
 CHAR_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"  # Nordic UART RX
 
 # ====== Control State ======
